@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.modules.User.service import UserService
 from app.modules.User.schemes import UserCreate, UserUpdate,UserResponse
 from app.core.database import get_db
@@ -11,25 +11,38 @@ user_service = UserService()
 
 @user_router.get("/{user_id}", response_model=UserResponse)
 async def get_user(user_id: str, session: AsyncSession = Depends(get_db)):
-    user = await user_service.get_user_by_id(user_id, session)
-    return user
+   try:
+        user = await user_service.get_user_by_id(user_id, session)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+   except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
 
-@user_router.post("/", response_model=UserResponse)
+@user_router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(user_data: UserCreate, session: AsyncSession = Depends(get_db)):
       create_user = await user_service.create_user(user_data, session)
       return create_user
 
 @user_router.put("/{user_id}", response_model=UserResponse)
 async def update_user(user_id: str, user_data: UserUpdate, session: AsyncSession = Depends(get_db)):
-    updated_user = await user_service.update_user(user_id, user_data, session)
-    return updated_user
+    try:
+        return await user_service.update_user(user_id, user_data, session)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
-@user_router.delete("/{user_id}")
+@user_router.delete("/{user_id}",status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: str, session: AsyncSession = Depends(get_db)):
-    result = await user_service.delete_user(user_id, session)
-    return {"deleted": result}
+       try:
+            await user_service.delete_user(user_id, session)
+       except ValueError as e:
+              raise HTTPException(status_code=404, detail=str(e))
+    
 
 @user_router.get("/", response_model=List[UserResponse])
 async def get_all_users(session: AsyncSession = Depends(get_db)):
     users = await user_service.get_all_users(session)
+    if not users:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No users found")
     return users
