@@ -1,1 +1,8 @@
+
 .env
+.env.*
+*.pyc
+*.pyo
+*.pyd
+.Python
+
