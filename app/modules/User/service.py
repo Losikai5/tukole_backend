@@ -1,7 +1,7 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, desc
 from uuid import UUID
-from.schemes import UserCreate, UserUpdate
+from .schemes import UserCreate, UserUpdate
 from app.modules.User.model import User as UserModel
 
 
@@ -17,8 +17,12 @@ class UserService:
         results = await session.exec(statement)
         return results.first()
 
-    async def create_user(self, user_data: UserCreate, session: AsyncSession):
-        new_user = UserModel(**user_data.model_dump())
+    async def create_user(self, user_data: UserCreate, hashed_password: str, session: AsyncSession):
+        """Create a new user with the provided hashed password."""
+        new_user = UserModel(
+            **user_data.model_dump(),
+            hashed_password=hashed_password
+        )
         session.add(new_user)
         await session.commit()
         await session.refresh(new_user)

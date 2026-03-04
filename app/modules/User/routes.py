@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.modules.User.service import UserService
-from app.modules.User.schemes import UserCreate, UserUpdate,UserResponse
+from app.modules.User.schemes import UserUpdate, UserResponse
 from app.core.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -20,10 +20,8 @@ async def get_user(user_id: str, session: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
     
 
-@user_router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(user_data: UserCreate, session: AsyncSession = Depends(get_db)):
-      create_user = await user_service.create_user(user_data, session)
-      return create_user
+# User creation should only be done through /auth/register endpoint
+# This ensures proper password hashing and validation
 
 @user_router.put("/{user_id}", response_model=UserResponse)
 async def update_user(user_id: str, user_data: UserUpdate, session: AsyncSession = Depends(get_db)):

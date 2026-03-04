@@ -8,7 +8,7 @@ class SignUpScheme(BaseModel):
     last_name: str
     role: str = Field(default="user")
     email: EmailStr
-    is_verified: bool = Field(default=False)
+    is_active: bool = Field(default=False)
     password: str
 
     model_config = {
@@ -19,7 +19,7 @@ class SignUpScheme(BaseModel):
                 "last_name": "Doe",
                 "role": "user",
                 "email": "johndoe@example.com",
-                "is_verified": False,
+                "is_active": False,
                 "password": "strongpassword123"
             }
         }
@@ -43,7 +43,7 @@ class UserResponseScheme(BaseModel):
     last_name: str
     role: str
     email: EmailStr
-    is_verified: bool
+    is_active: bool
     created_at: datetime 
     updated_at: datetime
     model_config = {
@@ -55,7 +55,7 @@ class UserResponseScheme(BaseModel):
                 "last_name": "Doe",
                 "role": "user",
                 "email": "johndoe@example.com",
-                "is_verified": False,
+                "is_active": False,
                 "created_at": "2023-01-01T00:00:00Z",
                 "updated_at": "2023-01-01T00:00:00Z"
             }
