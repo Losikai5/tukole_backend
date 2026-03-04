@@ -1,10 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemes import CreateService, ServiceResponse
-from .model import Services as ServiceModel
+from .model import Service as ServiceModel
 from sqlmodel import select, desc
 from uuid import UUID
 
-class Service:
+class ServiceService:
     async def create_service(self, service_data: CreateService, session: AsyncSession):
         new_service = ServiceModel(**service_data.model_dump())
         session.add(new_service)
