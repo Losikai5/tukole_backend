@@ -4,11 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .service import Auth_service
 from app.modules.User.service import UserService
 from app.modules.User.schemes import UserCreate
-from app.modules.User.model import User
+from app.core.models import User
 from .schemes import SignUpScheme, UserResponseScheme, SignInScheme
 from .utils import verify_password, create_refresh_token, create_access_token, hash_password
 from fastapi.responses import JSONResponse
-from datetime import timedelta
+from datetime import datetime, timedelta
+from app.core.dependencies import RefreshToken
 
 
 auth_router = APIRouter()
@@ -71,13 +72,20 @@ async def register(user_data: SignUpScheme, session: AsyncSession = Depends(get_
     new_user = await user_service.create_user(user_create_data, hashed_pwd, session)
     return new_user
 
+
+@auth_router.post("/refresh-token")
+async def refresh_token(user_data: dict = Depends(RefreshToken()), session: AsyncSession = Depends(get_db)):
+    expiry = user_data['expiry']
+    if datetime.fromtimestamp(expiry) > datetime.now():
+        new_access_token = create_access_token(user_data, refresh=False)
+        return {"access_token": new_access_token}
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired refresh token")
+
 """"
 @auth_router.post("/logout")
 async def logout():
     pass
-@auth_router.post("/refresh-token")
-async def refresh_token():
-    pass
+
 @auth_router.get("/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     return {

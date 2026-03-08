@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemes import CreateService, UpdateService, ServiceResponse
-from .model import Service as ServiceModel
+from app.core.models import Service as ServiceModel
 from sqlmodel import select, desc
 from uuid import UUID
 

@@ -5,9 +5,11 @@ from uuid import UUID
 from .schemes import CreateService, UpdateService, ServiceResponse
 from .service import ServiceService
 from app.core.database import get_db
+from app.core.dependencies import Bearer
 
 service_router = APIRouter()
 service_service = ServiceService()
+token_auth = Bearer()  # Initialize the Bearer token authentication dependency
 
 @service_router.post("/", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)
 async def create_service(service_data: CreateService, session: AsyncSession = Depends(get_db)):

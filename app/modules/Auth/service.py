@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from app.modules.User.model import User
+from app.core.models import User
 
 class Auth_service:
     async def get_user_by_email(self, email: str, session: AsyncSession):

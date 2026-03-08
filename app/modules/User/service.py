@@ -2,7 +2,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, desc
 from uuid import UUID
 from .schemes import UserCreate, UserUpdate
-from app.modules.User.model import User as UserModel
+from app.core.models import User as UserModel
 
 
 class UserService:
