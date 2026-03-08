@@ -4,18 +4,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .service import Auth_service
 from app.modules.User.service import UserService
 from app.modules.User.schemes import UserCreate
-from app.core.models import User
 from .schemes import SignUpScheme, UserResponseScheme, SignInScheme
 from .utils import verify_password, create_refresh_token, create_access_token, hash_password
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
-from app.core.dependencies import RefreshToken
+from app.core.dependencies import RefreshToken, AccessToken, get_current_user
+from app.core.redis import add_token_to_blocklist
+
 
 
 auth_router = APIRouter()
 auth_service = Auth_service()
 user_service = UserService()
-
+refresh_token_dependency = RefreshToken()
+access_token_dependency = AccessToken()
 
 @auth_router.post("/login")
 async def login(user_data: SignInScheme, session: AsyncSession = Depends(get_db)):
@@ -74,21 +76,20 @@ async def register(user_data: SignUpScheme, session: AsyncSession = Depends(get_
 
 
 @auth_router.post("/refresh-token")
-async def refresh_token(user_data: dict = Depends(RefreshToken()), session: AsyncSession = Depends(get_db)):
-    expiry = user_data['expiry']
+async def refresh_token(user_data: dict = Depends(refresh_token_dependency), session: AsyncSession = Depends(get_db)):
+    expiry = user_data['exp']
     if datetime.fromtimestamp(expiry) > datetime.now():
-        new_access_token = create_access_token(user_data, refresh=False)
+        new_access_token = create_access_token(user_data['user'], refresh=False)
         return {"access_token": new_access_token}
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired refresh token")
 
-""""
 @auth_router.post("/logout")
-async def logout():
-    pass
+async def logout(Data: dict = Depends(access_token_dependency)):
+    jti = Data['jti']
+    await add_token_to_blocklist(jti)
+    return JSONResponse(content={"message": "Logout successful"}, status_code=status.HTTP_200_OK)
+
 
 @auth_router.get("/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
-    return {
-        "user": current_user
-    }
-"""
+    return {"user": current_user }
