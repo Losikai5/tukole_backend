@@ -21,51 +21,10 @@ class User(SQLModel, table=True):
     updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, server_default=func.now(), onupdate=func.now()))
     #Relationships
     #reviews: list["Review"] = Relationship(back_populates="user")
-
-    def __repr__(self):
-        return f"User(uid={self.uid}, username='{self.username}', email='{self.email}', role='{self.role}')"
-    
-
-
-
-
-
-class Review(SQLModel, table=True):
-    __tablename__ = "reviews"
-    
-    uid: UUID = Field(
-        sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4),
-        description="Unique identifier for the review"
-    )
-    service_id: str = Field(
-        sa_column=Column(pg.UUID(as_uuid=True), nullable=False),
-        description="ID of the reviewed service"
-    )
-    user_id: str = Field(
-        sa_column=Column(pg.UUID(as_uuid=True), nullable=False),
-        description="ID of the user who wrote the review"
-    )
-    rating: int = Field(..., ge=1, le=5, description="Rating between 1 and 5")
-    comment: str = Field(..., max_length=1000, description="Review comment")
-    created_at: datetime = Field(
-        sa_column=Column(pg.TIMESTAMP, server_default=func.now()),
-        description="Timestamp when review was created"
-    )
-    updated_at: datetime = Field(
-        sa_column=Column(pg.TIMESTAMP, server_default=func.now(), onupdate=func.now()),
-        description="Timestamp when review was last updated"
-    )
-    #Relationships
-    #services: List["Service"] = Relationship(back_populates="reviews")
-    #user: "User" = Relationship(back_populates="reviews")
-
-    def __repr__(self) -> str:
-        return f"Review(uid={self.uid}, service_id={self.service_id}, user_id={self.user_id}, rating={self.rating})" 
-
-
-
-
-
+     # Relationships
+    # provider_profile: Optional["Provider"] = Relationship(back_populates="user")
+    # bookings: list["Booking"] = Relationship(back_populates="customer")
+    # reviews: list["Review"] = Relationship(back_populates="reviewer")
 
 class Service(SQLModel, table=True):
     """Service model representing a service offered in the platform."""
@@ -99,7 +58,143 @@ class Service(SQLModel, table=True):
         sa_column=Column(pg.TIMESTAMP, server_default=func.now(), onupdate=func.now()),
         description="Timestamp when service was last updated"
     )
+    # Relationships
+    # provider: Optional["Provider"] = Relationship(back_populates="services")
+    # bookings: list["Booking"] = Relationship(back_populates="service")
+
     #reviews: List["Review"] = Relationship(back_populates="services")
 
-    def __repr__(self) -> str:
-        return f"Service(uid={self.uid}, name='{self.name}', price={self.price})"       
+class Provider(SQLModel, table=True):
+
+    __tablename__ = "providers"
+
+    id: UUID = Field(
+        sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    )
+
+    user_id: UUID = Field(
+        foreign_key="users.uid"
+    )
+
+    business_name: Optional[str] = None
+    bio: Optional[str] = None
+
+    rating: float = 0
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    # user: Optional["User"] = Relationship(back_populates="provider_profile")
+    # services: list["Service"] = Relationship(back_populates="provider")
+
+class Booking(SQLModel, table=True):
+
+    __tablename__ = "bookings"
+
+    id: UUID = Field(
+        sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    )
+
+    service_id: UUID = Field(
+        foreign_key="services.id"
+    )
+
+    customer_id: UUID = Field(
+        foreign_key="users.uid"
+    )
+
+    booking_date: datetime
+
+    status: str = "pending"  # pending | accepted | completed | cancelled
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    # service: Optional["Service"] = Relationship(back_populates="bookings")
+    # customer: Optional["User"] = Relationship(back_populates="bookings")
+    # payment: Optional["Payment"] = Relationship(back_populates="booking")
+    # review: Optional["Review"] = Relationship(back_populates="booking")
+    # disputes: list["Dispute"] = Relationship(back_populates="booking")
+
+
+class Payment(SQLModel, table=True):
+
+    __tablename__ = "payments"
+
+    id: UUID = Field(
+        sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    )
+
+    booking_id: UUID = Field(
+        foreign_key="bookings.id"
+    )
+
+    amount: float
+
+    status: str = "pending"  # pending | escrow | released | refunded
+
+    transaction_ref: Optional[str] = None
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    # booking: Optional["Booking"] = Relationship(back_populates="payment")
+
+
+class Review(SQLModel, table=True):
+    __tablename__ = "reviews"
+
+    id: UUID = Field(
+        sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    )
+
+    booking_id: UUID = Field(
+        foreign_key="bookings.id"
+    )
+
+    reviewer_id: UUID = Field(
+        foreign_key="users.uid"
+    )
+
+    rating: int
+
+    comment: Optional[str] = None
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    # booking: Optional["Booking"] = Relationship(back_populates="review")
+    # reviewer: Optional["User"] = Relationship(back_populates="reviews")
+
+
+class Dispute(SQLModel, table=True):
+
+    __tablename__ = "disputes"
+
+    id: UUID = Field(
+        sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    )
+
+    booking_id: UUID = Field(
+        foreign_key="bookings.id"
+    )
+
+    raised_by: UUID = Field(
+        foreign_key="users.uid"
+    )
+
+    reason: str
+
+    description: Optional[str] = None
+
+    status: str = "open"  # open | under_review | resolved | rejected
+
+    admin_response: Optional[str] = None
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    resolved_at: Optional[datetime] = None
+
+    # Relationships
+    # booking: Optional["Booking"] = Relationship(back_populates="disputes")
+    # user: Optional["User"] = Relationship()    
