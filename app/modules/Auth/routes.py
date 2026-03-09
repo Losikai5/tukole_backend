@@ -21,33 +21,34 @@ access_token_dependency = AccessToken()
 
 @auth_router.post("/login")
 async def login(user_data: SignInScheme, session: AsyncSession = Depends(get_db)):
+
     user = await auth_service.get_user_by_email(user_data.email, session)
 
     if not user or not verify_password(user_data.password, user.hashed_password):
-         raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid credentials"
-    )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
 
-    user_payload = {
-    "uid": str(user.uid),
-    "role": user.role
-           }
-
-    access_token = create_access_token(user_payload, refresh=False)
-    refresh_token = create_refresh_token(user_payload,refresh=True,expiry=timedelta(days=7))
-
-    return JSONResponse(content={
-    "message": "Login successful",
-    "access_token": access_token,
-    "refresh_token": refresh_token,
-     "user": {
+    payload = {
         "uid": str(user.uid),
-        "username": user.username,
-        "email": user.email,
         "role": user.role
-}
-    })
+    }
+
+    access_token = create_access_token(payload)
+    refresh_token = create_refresh_token(payload)
+
+    return {
+        "message": "Login successful",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user": {
+            "uid": str(user.uid),
+            "username": user.username,
+            "email": user.email,
+            "role": user.role
+        }
+    }
 
 
 @auth_router.post("/register", response_model=UserResponseScheme, status_code=status.HTTP_201_CREATED)
@@ -76,18 +77,25 @@ async def register(user_data: SignUpScheme, session: AsyncSession = Depends(get_
 
 
 @auth_router.post("/refresh-token")
-async def refresh_token(user_data: dict = Depends(refresh_token_dependency), session: AsyncSession = Depends(get_db)):
-    expiry = user_data['exp']
-    if datetime.fromtimestamp(expiry) > datetime.now():
-        new_access_token = create_access_token(user_data['user'], refresh=False)
-        return {"access_token": new_access_token}
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired refresh token")
+async def refresh_token(token_data: dict = Depends(RefreshToken())):
+
+    user_payload = {
+        "uid": token_data["sub"],
+        "role": token_data["role"]
+    }
+
+    new_access_token = create_access_token(user_payload)
+
+    return {"access_token": new_access_token}
 
 @auth_router.post("/logout")
-async def logout(Data: dict = Depends(access_token_dependency)):
-    jti = Data['jti']
+async def logout(token_data: dict = Depends(AccessToken())):
+
+    jti = token_data["jti"]
+
     await add_token_to_blocklist(jti)
-    return JSONResponse(content={"message": "Logout successful"}, status_code=status.HTTP_200_OK)
+
+    return {"message": "Logout successful"}
 
 
 @auth_router.get("/me")
