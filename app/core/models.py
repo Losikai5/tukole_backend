@@ -68,7 +68,7 @@ class Provider(SQLModel, table=True):
 
     __tablename__ = "providers"
 
-    id: UUID = Field(
+    uid: UUID = Field(
         sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
     )
 
@@ -91,12 +91,12 @@ class Booking(SQLModel, table=True):
 
     __tablename__ = "bookings"
 
-    id: UUID = Field(
+    uid: UUID = Field(
         sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
     )
 
     service_id: UUID = Field(
-        foreign_key="services.id"
+        foreign_key="services.uid"
     )
 
     customer_id: UUID = Field(
@@ -121,12 +121,12 @@ class Payment(SQLModel, table=True):
 
     __tablename__ = "payments"
 
-    id: UUID = Field(
+    uid: UUID = Field(
         sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
     )
 
     booking_id: UUID = Field(
-        foreign_key="bookings.id"
+        foreign_key="bookings.uid"
     )
 
     amount: float
@@ -144,12 +144,12 @@ class Payment(SQLModel, table=True):
 class Review(SQLModel, table=True):
     __tablename__ = "reviews"
 
-    id: UUID = Field(
+    uid: UUID = Field(
         sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
     )
 
     booking_id: UUID = Field(
-        foreign_key="bookings.id"
+        foreign_key="bookings.uid"
     )
 
     reviewer_id: UUID = Field(
@@ -171,12 +171,12 @@ class Dispute(SQLModel, table=True):
 
     __tablename__ = "disputes"
 
-    id: UUID = Field(
+    uid: UUID = Field(
         sa_column=Column(pg.UUID(as_uuid=True), primary_key=True, default=uuid4)
     )
 
     booking_id: UUID = Field(
-        foreign_key="bookings.id"
+        foreign_key="bookings.uid"
     )
 
     raised_by: UUID = Field(
