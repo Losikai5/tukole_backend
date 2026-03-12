@@ -5,17 +5,18 @@ from uuid import UUID
 from .schemes import CreateService, UpdateService, ServiceResponse
 from .service import ServiceService
 from app.core.database import get_db
-from app.core.dependencies import Bearer
+from app.core.dependencies import Bearer, get_current_user
+from app.core.models import  Provider
 
 service_router = APIRouter()
 service_service = ServiceService()
 token_auth = Bearer()  # Initialize the Bearer token authentication dependency
 
 @service_router.post("/", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)
-async def create_service(service_data: CreateService, session: AsyncSession = Depends(get_db)):
+async def create_service(service_data: CreateService, session: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     """Create a new service."""
     try:
-        return await service_service.create_service(service_data, session)
+        return await service_service.create_service(service_data, current_user.uid, session)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
