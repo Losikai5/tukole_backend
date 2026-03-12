@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import UUID
 
 class ReviewCreate(BaseModel):
-    booking_id: str = Field(..., description="ID of the reviewed booking")
+    booking_id: UUID = Field(..., description="ID of the reviewed booking")
     rating: int = Field(..., ge=1, le=5, description="Rating between 1 and 5")
     comment: Optional[str] = Field(None, max_length=1000, description="Review comment")
 
@@ -33,10 +33,10 @@ class UpdateReview(BaseModel):
 
 class ReviewResponse(BaseModel):
     uid: UUID
-    booking_id: str
-    reviewer_id: str
+    booking_id: UUID
+    reviewer_id: UUID
     rating: int
-    comment: str
+    comment: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -54,4 +54,3 @@ class ReviewResponse(BaseModel):
             }
         }
     }
-

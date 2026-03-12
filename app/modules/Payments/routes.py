@@ -20,7 +20,7 @@ async def create_payment(payment_data: PaymentCreate,session: AsyncSession = Dep
 @payment_router.patch("/{payment_id}/escrow")
 async def mark_payment_escrow(payment_id,session: AsyncSession = Depends(get_db)):
 
-    return await payment_service.mark_payment_escrow(payment_id,session)
+    return await payment_service.make_payment_escrow(payment_id,session)
 
 
 @payment_router.patch("/{payment_id}/release")
@@ -37,4 +37,4 @@ async def refund_payment(payment_id,session: AsyncSession = Depends(get_db)):
 @payment_router.get("/{payment_id}", response_model=PaymentResponse)
 async def get_payment(payment_id,session: AsyncSession = Depends(get_db)):
 
-    return await payment_service.get_payment(payment_id,session)
+    return await payment_service.get_payment_by_id(payment_id,session)

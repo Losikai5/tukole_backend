@@ -22,6 +22,7 @@ class User(SQLModel, table=True):
      # Relationships
     provider_profile: Optional["Provider"] = Relationship(back_populates="user")
     bookings: list["Booking"] = Relationship(back_populates="customer")
+    reviews: list["Review"] = Relationship(back_populates="reviewer")
 
 
 class Service(SQLModel, table=True):
@@ -34,6 +35,7 @@ class Service(SQLModel, table=True):
     description: Optional[str] = Field(default=None,nullable=True,description="Detailed service description")
     price: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False),description="Service price in decimal format")
     created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, server_default=func.now()),description="Timestamp when service was created")
+    updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, server_default=func.now(), onupdate=func.now()),description="Timestamp when service was last updated")
     # Relationships
     provider: Optional["Provider"] = Relationship(back_populates="services")
     bookings: list["Booking"] = Relationship(back_populates="service")
@@ -116,6 +118,7 @@ class Review(SQLModel, table=True):
     comment: Optional[str] = None
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
     booking: Optional["Booking"] = Relationship(back_populates="review")

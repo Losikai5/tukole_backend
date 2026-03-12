@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.Auth.utils import decode_access_token
 from app.core.redis import is_token_revoked
 from app.modules.User.service import UserService
-from app.main import get_db
+from app.core.database import get_db
 
 
 class Bearer(HTTPBearer):
