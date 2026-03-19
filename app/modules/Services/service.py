@@ -6,17 +6,17 @@ from sqlmodel import select, desc
 from uuid import UUID
 
 class ServiceService:
-    async def create_service(self, service_data: CreateService, provider_id: str, session: AsyncSession):
+    async def create_service(self, service_data: CreateService, user_id: str, session: AsyncSession):
         """Create a new service."""
 
-        #check if provider exists
-        statement = select(Provider).where(Provider.uid == provider_id)
+        # Provider accounts create services through their provider profile.
+        statement = select(Provider).where(Provider.user_id == user_id)
         result = await session.exec(statement)
         provider = result.first()
         if not provider:
             raise ValueError("Provider not found")
 
-        new_service = Service(**service_data.model_dump(), provider_id=provider_id)
+        new_service = Service(**service_data.model_dump(), provider_id=provider.uid)
         session.add(new_service)
         await session.commit()
         await session.refresh(new_service)

@@ -33,7 +33,7 @@ class NotificationService:
         return result.all()
 
 
-    async def mark_as_read(self, notification_id: str, session: AsyncSession):
+    async def mark_as_read(self, notification_id: str, user_id: UUID, session: AsyncSession):
 
         notification = await session.get(Notification, notification_id)
         
@@ -41,6 +41,12 @@ class NotificationService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Notification not found"
+            )
+
+        if notification.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only mark your own notifications as read"
             )
 
         notification.is_read = True

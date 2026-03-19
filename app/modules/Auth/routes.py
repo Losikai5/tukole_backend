@@ -30,6 +30,12 @@ async def login(user_data: SignInScheme, session: AsyncSession = Depends(get_db)
             detail="Invalid credentials"
         )
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive"
+        )
+
     payload = {
         "uid": str(user.uid),
         "role": user.role
@@ -67,7 +73,7 @@ async def register(user_data: SignUpScheme, session: AsyncSession = Depends(get_
         first_name=user_data.first_name,
         last_name=user_data.last_name,
         email=user_data.email,
-        is_active=user_data.is_active,
+        is_active=True,
         role=user_data.role
     )
     

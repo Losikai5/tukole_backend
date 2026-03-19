@@ -10,12 +10,7 @@ from app.core.models import Review, Booking
 class ReviewService:
 
 
-    async def create_review(
-        self,
-        review_data: ReviewCreate,
-        user_id: UUID,
-        session: AsyncSession
-    ):
+    async def create_review(self,review_data: ReviewCreate,user_id: UUID,session: AsyncSession):
         """Create a new review."""
 
         booking = await session.get(Booking, review_data.booking_id)
@@ -52,10 +47,7 @@ class ReviewService:
                 detail="Review already exists for this booking"
             )
 
-        review = Review(
-            **review_data.model_dump(),
-            reviewer_id=user_id
-        )
+        review = Review(**review_data.model_dump(),reviewer_id=user_id)
 
         session.add(review)
 
@@ -87,14 +79,15 @@ class ReviewService:
         return review
 
 
-    async def update_review(
-        self,
-        review_id: UUID,
-        review_data: UpdateReview,
-        session: AsyncSession
-    ):
+    async def update_review(self,review_id: UUID,review_data: UpdateReview,current_user,session: AsyncSession):
 
         review = await self.get_review_by_id(review_id, session)
+
+        if current_user.role != "admin" and review.reviewer_id != current_user.uid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only update your own review"
+            )
 
         update_data = review_data.model_dump(exclude_unset=True)
 
@@ -107,9 +100,15 @@ class ReviewService:
         return review
 
 
-    async def delete_review(self, review_id: UUID, session: AsyncSession):
+    async def delete_review(self, review_id: UUID, current_user, session: AsyncSession):
 
         review = await self.get_review_by_id(review_id, session)
+
+        if current_user.role != "admin" and review.reviewer_id != current_user.uid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only delete your own review"
+            )
 
         await session.delete(review)
 

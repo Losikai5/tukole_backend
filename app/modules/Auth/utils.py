@@ -1,9 +1,16 @@
 import logging
+from types import SimpleNamespace
+import bcrypt
 import jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from app.core.config import settings
 import uuid
+
+# Passlib expects bcrypt.__about__.__version__, but newer bcrypt releases
+# expose the version at module level instead.
+if not hasattr(bcrypt, "__about__"):
+    bcrypt.__about__ = SimpleNamespace(__version__=bcrypt.__version__)
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

@@ -34,7 +34,7 @@ class Bearer(HTTPBearer):
         return token_data
 
     def verify_token(self, token_data: dict):
-        raise NotImplementedError()
+        raise NotImplementedError("Subclasses must implement the verify_token method")
 
 
 class RefreshToken(Bearer):

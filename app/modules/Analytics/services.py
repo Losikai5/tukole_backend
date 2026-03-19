@@ -30,4 +30,4 @@ class AnalyticsService:
 
         result = await session.exec(statement)
 
-        return result.one()
+        return result.one() or 0.0

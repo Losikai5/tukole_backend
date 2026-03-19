@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.dependencies import get_current_user, RoleChecker
 from .service import PaymentService
 from .schema import PaymentCreate, PaymentResponse
 
@@ -12,29 +13,52 @@ payment_service = PaymentService()
 
 
 @payment_router.post("/", response_model=PaymentResponse)
-async def create_payment(payment_data: PaymentCreate,session: AsyncSession = Depends(get_db)):
+async def create_payment(
+    payment_data: PaymentCreate,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
 
-    return await payment_service.create_payment(payment_data,session)
+    return await payment_service.create_payment(payment_data,current_user,session)
 
 
 @payment_router.patch("/{payment_id}/escrow")
-async def mark_payment_escrow(payment_id,session: AsyncSession = Depends(get_db)):
+async def mark_payment_escrow(
+    payment_id,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["admin"]))
+):
 
     return await payment_service.make_payment_escrow(payment_id,session)
 
 
 @payment_router.patch("/{payment_id}/release")
-async def release_payment(payment_id,session: AsyncSession = Depends(get_db)):
+async def release_payment(
+    payment_id,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["admin"]))
+):
 
     return await payment_service.release_payment(payment_id,session)
 
 @payment_router.patch("/{payment_id}/refund")
-async def refund_payment(payment_id,session: AsyncSession = Depends(get_db)):
+async def refund_payment(
+    payment_id,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["admin"]))
+):
 
     return await payment_service.refund_payment(payment_id,session)
 
 
 @payment_router.get("/{payment_id}", response_model=PaymentResponse)
-async def get_payment(payment_id,session: AsyncSession = Depends(get_db)):
+async def get_payment(
+    payment_id,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
 
-    return await payment_service.get_payment_by_id(payment_id,session)
+    return await payment_service.get_payment_by_id(payment_id,current_user,session)

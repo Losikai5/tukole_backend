@@ -1,5 +1,7 @@
+from typing import Optional
+from uuid import UUID
+
 from pydantic import BaseModel
-from typing import Optional, List
 
 class ProviderBase(BaseModel):
     business_name: Optional[str] = None
@@ -15,8 +17,8 @@ class ProviderBase(BaseModel):
     }
 
 class ProviderResponse(ProviderBase):
-    uid: str
-    user_id: str
+    uid: UUID
+    user_id: UUID
     business_name: Optional[str] = None
     bio: Optional[str] = None
     rating: float = 0.0

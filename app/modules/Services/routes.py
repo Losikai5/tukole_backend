@@ -5,14 +5,19 @@ from uuid import UUID
 from .schemes import CreateService, UpdateService, ServiceResponse
 from .service import ServiceService
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, RoleChecker
 from app.core.models import  Provider
 
 service_router = APIRouter()
 service_service = ServiceService()
 
 @service_router.post("/", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)
-async def create_service(service_data: CreateService, session: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+async def create_service(
+    service_data: CreateService,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["provider", "admin"]))
+):
     """Create a new service."""
     try:
         return await service_service.create_service(service_data, current_user.uid, session)
@@ -34,7 +39,13 @@ async def get_service_by_id(service_id: UUID, session: AsyncSession = Depends(ge
     return service
 
 @service_router.put("/{service_id}", response_model=ServiceResponse)
-async def update_service(service_id: UUID, service_data: UpdateService, session: AsyncSession = Depends(get_db)):
+async def update_service(
+    service_id: UUID,
+    service_data: UpdateService,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["provider", "admin"]))
+):
     """Update a service."""
     try:
         return await service_service.update_service(service_id, service_data, session)
@@ -42,7 +53,12 @@ async def update_service(service_id: UUID, service_data: UpdateService, session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 @service_router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_service(service_id: UUID, session: AsyncSession = Depends(get_db)):
+async def delete_service(
+    service_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["provider", "admin"]))
+):
     """Delete a service."""
     try:
         await service_service.delete_service(service_id, session)

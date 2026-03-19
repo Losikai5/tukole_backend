@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field
 import uuid
 from datetime import datetime
@@ -6,9 +8,8 @@ class SignUpScheme(BaseModel):
     username: str
     first_name: str
     last_name: str
-    role: str = Field(default="user")
+    role: Literal["user", "provider"] = Field(default="user")
     email: EmailStr
-    is_active: bool = Field(default=False)
     password: str
 
     model_config = {
@@ -19,7 +20,6 @@ class SignUpScheme(BaseModel):
                 "last_name": "Doe",
                 "role": "user",
                 "email": "johndoe@example.com",
-                "is_active": False,
                 "password": "strongpassword123"
             }
         }
