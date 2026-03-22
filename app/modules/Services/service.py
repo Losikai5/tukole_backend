@@ -27,6 +27,12 @@ class ServiceService:
         results = await session.exec(statement)
         return results.all()
 
+    async def get_service_by_id(self, service_id: UUID, session: AsyncSession):
+        """Get a single service by its ID."""
+        statement = select(Service).where(Service.uid == service_id)
+        result = await session.exec(statement)
+        return result.first()
+
     async def get_provider_services(self, provider_id: str, session: AsyncSession):
         """Get all services for a specific provider."""
         statement = select(Service).where(Service.provider_id == provider_id)

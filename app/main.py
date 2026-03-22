@@ -9,9 +9,12 @@ from app.modules.Providers.routes import provider_router
 from app.modules.Disputes.routes import dispute_router
 from app.modules.Notifications.routes import notification_router
 from app.modules.Analytics.routes import analytics_router
+from app.middleware import register_middleware
 
 version = "v2"
 app = FastAPI(title="TUKOLE",description="A Mobile-First Service Marketplace for Uganda",version="1.0.0")
+
+register_middleware(app)
 app.include_router(user_router, prefix=f"/api/{version}/users",tags=["User Management"])
 app.include_router(auth_router, prefix=f"/api/{version}/auth",tags=["Authentication"])
 app.include_router(service_router, prefix=f"/api/{version}/services",tags=["Services Management"])

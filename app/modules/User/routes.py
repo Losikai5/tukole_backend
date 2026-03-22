@@ -28,38 +28,40 @@ async def get_user(
 # User creation should only be done through /auth/register endpoint
 # This ensures proper password hashing and validation
 
+from uuid import UUID
+
 @user_router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
-    user_id: str,
+    user_id: UUID,
     user_data: UserUpdate,
     session: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user= Depends(get_current_user),
 ):
-    if current_user.role != "admin" and str(current_user.uid) != user_id:
+    # Only the account owner or an admin can update
+    if current_user.role != "admin" and current_user.uid != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own account"
+            detail="You can only update your own account",
         )
 
-    update_payload = user_data.model_dump(exclude_unset=True)
-
+    # Non-admins cannot touch role or is_active
     if current_user.role != "admin":
-        restricted_fields = {"role", "is_active"}
-        attempted_restricted_fields = restricted_fields.intersection(update_payload)
-        if attempted_restricted_fields:
+        restricted = {"role", "is_active"}
+        attempted = restricted.intersection(user_data.model_dump(exclude_unset=True))
+        if attempted:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admins can update role or activation status"
+                detail="Only admins can update role or activation status",
             )
 
     try:
-        return await user_service.update_user(user_id, UserUpdate(**update_payload), session)
+        return await user_service.update_user(user_id, user_data, session)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 @user_router.delete("/{user_id}",status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
-    user_id: str,
+    user_id: UUID,
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
     _: bool = Depends(RoleChecker(["admin"]))
