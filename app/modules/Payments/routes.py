@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import UUID
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, RoleChecker
@@ -24,7 +25,7 @@ async def create_payment(
 
 @payment_router.patch("/{payment_id}/escrow")
 async def mark_payment_escrow(
-    payment_id,
+    payment_id: UUID,
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
     _: bool = Depends(RoleChecker(["admin"]))
@@ -35,7 +36,7 @@ async def mark_payment_escrow(
 
 @payment_router.patch("/{payment_id}/release")
 async def release_payment(
-    payment_id,
+    payment_id: UUID,
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
     _: bool = Depends(RoleChecker(["admin"]))
@@ -45,7 +46,7 @@ async def release_payment(
 
 @payment_router.patch("/{payment_id}/refund")
 async def refund_payment(
-    payment_id,
+    payment_id: UUID,
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
     _: bool = Depends(RoleChecker(["admin"]))
@@ -56,7 +57,7 @@ async def refund_payment(
 
 @payment_router.get("/{payment_id}", response_model=PaymentResponse)
 async def get_payment(
-    payment_id,
+    payment_id: UUID,
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user)
 ):

@@ -61,3 +61,7 @@ class UserResponseScheme(BaseModel):
             }
         }
     }
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr

@@ -52,6 +52,7 @@ async def get_dispute_by_id(
 
     return await dispute_service.get_dispute_by_id(
         dispute_id,
+        current_user,
         session
     )
 
@@ -62,11 +63,13 @@ async def update_dispute(
     dispute_id: UUID,
     dispute_data: UpdateDispute,
     session: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
     _: bool = Depends(RoleChecker(["admin"]))
 ):
 
     return await dispute_service.update_dispute(
         dispute_id,
         dispute_data,
+        current_user,
         session
     )

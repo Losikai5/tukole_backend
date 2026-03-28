@@ -4,8 +4,20 @@ from app.core.models import Service as ServiceModel
 from app.core.models import Provider,Service
 from sqlmodel import select, desc
 from uuid import UUID
+from fastapi import HTTPException, status
 
 class ServiceService:
+    async def _ensure_service_access(self, service: Service, current_user, session: AsyncSession):
+        if current_user.role == "admin":
+            return
+
+        provider = await session.get(Provider, service.provider_id)
+        if not provider or provider.user_id != current_user.uid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only modify your own services"
+            )
+
     async def create_service(self, service_data: CreateService, user_id: str, session: AsyncSession):
         """Create a new service."""
 
@@ -39,13 +51,15 @@ class ServiceService:
         results = await session.exec(statement)
         return results.all()
 
-    async def update_service(self, service_id: str, service_data: UpdateService, session: AsyncSession):
+    async def update_service(self, service_id: str, service_data: UpdateService, current_user, session: AsyncSession):
         """Update an existing service."""
         service = select(Service).where(Service.uid == service_id)
         result = await session.exec(service)
         service = result.first()
         if not service:
             raise ValueError("Service not found")
+
+        await self._ensure_service_access(service, current_user, session)
 
         update_data = service_data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
@@ -56,13 +70,15 @@ class ServiceService:
         return service
     
 
-    async def delete_service(self, service_id: str, session: AsyncSession):
+    async def delete_service(self, service_id: str, current_user, session: AsyncSession):
         """Delete a service."""
         service = select(Service).where(Service.uid == service_id)
         result = await session.exec(service)
         service = result.first()
         if not service:
             raise ValueError("Service not found")
+
+        await self._ensure_service_access(service, current_user, session)
 
         await session.delete(service)
         await session.commit()

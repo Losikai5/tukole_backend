@@ -15,7 +15,7 @@ class AnalyticsService:
 
     async def total_bookings(self, session: AsyncSession):
 
-        statement = select(func.count(Booking.uid))
+        statement = select(func.count(Booking.uid)).where(Booking.deleted_at == None)
 
         result = await session.exec(statement)
 

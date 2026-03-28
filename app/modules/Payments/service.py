@@ -1,15 +1,55 @@
+import logging
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Optional
 
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 from uuid import UUID
 
-from app.core.models import Booking, Payment, Provider, Service
+from app.core.models import Booking, Dispute, Payment, Provider, Service
+from app.modules.Notifications.service import NotificationService
 from .schema import PaymentCreate
 
 
 class PaymentService:
+    ALLOWED_STATUS_TRANSITIONS = {
+        "pending": {"escrow", "refunded"},
+        "escrow": {"released", "refunded"},
+        "released": set(),
+        "refunded": set(),
+    }
+
+    def __init__(self):
+        self.notification_service = NotificationService()
+
+
+    async def _safe_create_notification(
+        self,
+        user_id: UUID,
+        title: str,
+        message: str,
+        session: AsyncSession,
+        event_type: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        entity_id: Optional[UUID] = None,
+        payload: Optional[dict[str, Any]] = None,
+    ):
+        try:
+            await self.notification_service.create_notification(
+                user_id,
+                title,
+                message,
+                session,
+                event_type=event_type,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                payload=payload,
+            )
+        except Exception:
+            logging.exception("Failed to create payment notification")
+
+
     @staticmethod
     def _normalize_amount(amount: float) -> Decimal:
         return Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -32,7 +72,7 @@ class PaymentService:
 
         booking = await session.get(Booking, booking_id)
 
-        if not booking:
+        if not booking or booking.deleted_at is not None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Booking not found"
@@ -66,6 +106,39 @@ class PaymentService:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have access to this payment"
         )
+
+
+    def _ensure_status_transition(self, payment: Payment, next_status: str):
+        allowed = self.ALLOWED_STATUS_TRANSITIONS.get(payment.status, set())
+        if next_status not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Invalid payment status transition from '{payment.status}' "
+                    f"to '{next_status}'"
+                ),
+            )
+
+
+    async def _ensure_release_preconditions(self, payment: Payment, session: AsyncSession):
+        booking, _ = await self._get_booking_with_service(payment.booking_id, session)
+        if booking.status != "completed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Payment can only be released for completed bookings"
+            )
+
+        statement = select(Dispute).where(
+            Dispute.booking_id == booking.uid,
+            Dispute.status.in_(["open", "under_review"]),
+        )
+        result = await session.exec(statement)
+        dispute = result.first()
+        if dispute:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot release payment while dispute is open or under review"
+            )
 
 
     async def create_payment(self,payment_data: PaymentCreate,current_user,session: AsyncSession):
@@ -112,6 +185,7 @@ class PaymentService:
     async def make_payment_escrow(self,payment_id: UUID,session: AsyncSession):
 
         payment = await self._get_payment_or_404(payment_id, session)
+        self._ensure_status_transition(payment, "escrow")
 
         payment.status = "escrow"
 
@@ -124,21 +198,56 @@ class PaymentService:
     async def release_payment(self,payment_id: UUID,session: AsyncSession):
 
         payment = await self._get_payment_or_404(payment_id, session)
+        self._ensure_status_transition(payment, "released")
+        await self._ensure_release_preconditions(payment, session)
 
         payment.status = "released"
 
         await session.commit()
         await session.refresh(payment)
 
+        booking, service = await self._get_booking_with_service(payment.booking_id, session)
+        provider = await session.get(Provider, service.provider_id)
+
+        if provider:
+            await self._safe_create_notification(
+                user_id=provider.user_id,
+                title="Payment Released",
+                message=(
+                    f"Payment for booking {payment.booking_id} has been released to you."
+                ),
+                session=session,
+                event_type="payment.released",
+                entity_type="payment",
+                entity_id=payment.uid,
+                payload={"booking_id": str(payment.booking_id), "status": payment.status},
+            )
+
         return payment
     async def refund_payment(self,payment_id: UUID,session: AsyncSession):
 
         payment = await self._get_payment_or_404(payment_id, session)
+        self._ensure_status_transition(payment, "refunded")
 
         payment.status = "refunded"
 
         await session.commit()
         await session.refresh(payment)
+
+        booking, _ = await self._get_booking_with_service(payment.booking_id, session)
+
+        await self._safe_create_notification(
+            user_id=booking.customer_id,
+            title="Refund Issued",
+            message=(
+                f"A refund has been issued for booking {payment.booking_id}."
+            ),
+            session=session,
+            event_type="payment.refunded",
+            entity_type="payment",
+            entity_id=payment.uid,
+            payload={"booking_id": str(payment.booking_id), "status": payment.status},
+        )
 
         return payment
     

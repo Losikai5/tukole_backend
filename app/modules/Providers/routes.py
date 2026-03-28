@@ -26,10 +26,10 @@ async def update_provider(
     current_user=Depends(get_current_user),
     _: bool = Depends(RoleChecker(["provider", "admin"]))
 ):
-    return await provider_service.update_provider(provider_id, provider_data, session)
+    return await provider_service.update_provider(provider_id, provider_data, current_user, session)
 @provider_router.delete("/provider/{provider_id}")
 async def delete_provider(provider_id: str,session: AsyncSession = Depends(get_db),current_user=Depends(get_current_user), _: bool = Depends(RoleChecker(["provider", "admin"]))):
-    await provider_service.delete_provider(provider_id, session)
+    await provider_service.delete_provider(provider_id, current_user, session)
     return {"detail": "Provider profile deleted successfully"}
 
 @provider_router.get("/providers", response_model=List[ProviderResponse])

@@ -26,6 +26,16 @@ async def get_my_bookings(session: AsyncSession = Depends(get_db),current_user =
 
     return await booking_service.get_user_bookings(current_user.uid,session)
 
+
+@booking_router.get("/provider/me", response_model=list[BookingResponse])
+async def get_my_provider_bookings(
+    session: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["provider"]))
+):
+
+    return await booking_service.get_provider_bookings(current_user.uid, session)
+
 @booking_router.put("/{booking_id}/status")
 async def update_booking_status(
     booking_id: str,
@@ -39,10 +49,22 @@ async def update_booking_status(
 @booking_router.delete("/{booking_id}")
 async def delete_booking(
     booking_id: str,
+    reason: str | None = None,
     session: AsyncSession = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
 
-    await booking_service.delete_booking(booking_id,current_user,session)
+    await booking_service.delete_booking(booking_id,current_user,session,reason)
 
     return {"detail": "Booking deleted successfully"}
+
+
+@booking_router.post("/expire-pending")
+async def expire_pending_bookings(
+    timeout_minutes: int = 60,
+    session: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+    _: bool = Depends(RoleChecker(["admin"]))
+):
+
+    return await booking_service.expire_pending_bookings(timeout_minutes, session)

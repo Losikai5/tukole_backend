@@ -53,8 +53,13 @@ async def update_review(review_id: UUID,review_data: UpdateReview,session: Async
 
 # Delete Review
 @review_router.delete("/{review_id}", status_code=status.HTTP_200_OK)
-async def delete_review(review_id: UUID,session: AsyncSession = Depends(get_db),current_user = Depends(get_current_user)):
+async def delete_review(
+    review_id: UUID,
+    reason: str | None = None,
+    session: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
 
-    await review_service.delete_review(review_id, current_user, session)
+    await review_service.delete_review(review_id, current_user, session, reason)
 
     return {"message": "Review deleted successfully"}

@@ -1,6 +1,7 @@
 from sqlmodel import Relationship, SQLModel, Field, Column
 import sqlalchemy.dialects.postgresql as pg
 from sqlalchemy import func, Numeric
+from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 from uuid import UUID, uuid4
 from decimal import Decimal
@@ -21,8 +22,14 @@ class User(SQLModel, table=True):
     updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, server_default=func.now(), onupdate=func.now()))
      # Relationships
     provider_profile: Optional["Provider"] = Relationship(back_populates="user")
-    bookings: list["Booking"] = Relationship(back_populates="customer")
-    reviews: list["Review"] = Relationship(back_populates="reviewer")
+    bookings: list["Booking"] = Relationship(
+        back_populates="customer",
+        sa_relationship_kwargs={"foreign_keys": "[Booking.customer_id]"},
+    )
+    reviews: list["Review"] = Relationship(
+        back_populates="reviewer",
+        sa_relationship_kwargs={"foreign_keys": "[Review.reviewer_id]"},
+    )
 
 
 class Service(SQLModel, table=True):
@@ -74,11 +81,20 @@ class Booking(SQLModel, table=True):
 
     status: str = "pending"  # pending | accepted | completed | cancelled
 
+    deleted_at: Optional[datetime] = Field(default=None)
+
+    deleted_by: Optional[UUID] = Field(default=None, foreign_key="users.uid")
+
+    delete_reason: Optional[str] = Field(default=None)
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
     service: Optional["Service"] = Relationship(back_populates="bookings")
-    customer: Optional["User"] = Relationship(back_populates="bookings")
+    customer: Optional["User"] = Relationship(
+        back_populates="bookings",
+        sa_relationship_kwargs={"foreign_keys": "[Booking.customer_id]"},
+    )
     payment: Optional["Payment"] = Relationship(back_populates="booking")
     review: Optional["Review"] = Relationship(back_populates="booking")
     disputes: list["Dispute"] = Relationship(back_populates="booking")
@@ -117,12 +133,19 @@ class Review(SQLModel, table=True):
 
     comment: Optional[str] = None
 
+    deleted_at: Optional[datetime] = Field(default=None)
+    deleted_by: Optional[UUID] = Field(default=None, foreign_key="users.uid")
+    delete_reason: Optional[str] = Field(default=None)
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
     booking: Optional["Booking"] = Relationship(back_populates="review")
-    reviewer: Optional["User"] = Relationship(back_populates="reviews")
+    reviewer: Optional["User"] = Relationship(
+        back_populates="reviews",
+        sa_relationship_kwargs={"foreign_keys": "[Review.reviewer_id]"},
+    )
 
 
 class Dispute(SQLModel, table=True):
@@ -166,6 +189,14 @@ class Notification(SQLModel, table=True):
     title: str
 
     message: str
+
+    event_type: Optional[str] = Field(default=None, max_length=100)
+
+    entity_type: Optional[str] = Field(default=None, max_length=100)
+
+    entity_id: Optional[UUID] = Field(default=None, sa_column=Column(pg.UUID(as_uuid=True), nullable=True))
+
+    payload: Optional[dict] = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
     is_read: bool = False
 

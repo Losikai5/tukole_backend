@@ -1,10 +1,21 @@
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
-from app.core.models import Provider ,User
+from app.core.models import Provider ,User, Service
 from .schemes import ProviderBase
 
 class ProviderService:
+    @staticmethod
+    def _ensure_provider_access(provider: Provider, current_user):
+        if current_user.role == "admin":
+            return
+
+        if provider.user_id != current_user.uid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only modify your own provider profile"
+            )
+
     async def create_provider(self, provider_data: ProviderBase, user_id: str, session: AsyncSession):
         """Create a new provider profile."""
         # Check if the user already has a provider profile
@@ -36,13 +47,15 @@ class ProviderService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider profile not found")
         return provider
     
-    async def update_provider(self, provider_id: str, provider_data: ProviderBase, session: AsyncSession):
+    async def update_provider(self, provider_id: str, provider_data: ProviderBase, current_user, session: AsyncSession):
         """Update an existing provider profile."""
         statement = select(Provider).where(Provider.uid == provider_id)
         result = await session.exec(statement)
         provider = result.first()
         if not provider:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider profile not found")
+
+        self._ensure_provider_access(provider, current_user)
 
         update_data = provider_data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
@@ -52,13 +65,25 @@ class ProviderService:
         await session.refresh(provider)
         return provider
     
-    async def delete_provider(self, provider_id: str, session: AsyncSession):
+    async def delete_provider(self, provider_id: str, current_user, session: AsyncSession):
         """Delete a provider profile."""
         statement = select(Provider).where(Provider.uid == provider_id)
         result = await session.exec(statement)
         provider = result.first()
         if not provider:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider profile not found")
+
+        self._ensure_provider_access(provider, current_user)
+
+        # Prevent orphaning services because services.provider_id is NOT NULL.
+        service_stmt = select(Service).where(Service.provider_id == provider.uid)
+        services_result = await session.exec(service_stmt)
+        provider_services = services_result.all()
+        if provider_services:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot delete provider profile while it still has services. Delete services first."
+            )
 
         await session.delete(provider)
         await session.commit()

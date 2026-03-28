@@ -1,0 +1,107 @@
+from datetime import datetime
+from typing import Literal, Optional
+from uuid import UUID
+
+from pydantic import BaseModel
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class UserRoleUpdate(BaseModel):
+    role: Literal["user", "provider", "admin"]
+
+
+class AdminUserResponse(BaseModel):
+    uid: UUID
+    username: str
+    first_name: str
+    last_name: str
+    email: str
+    is_active: bool
+    role: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AdminDisputeResolve(BaseModel):
+    status: Literal["under_review", "resolved", "rejected"]
+    admin_response: Optional[str] = None
+
+
+class AdminDisputeResponse(BaseModel):
+    uid: UUID
+    booking_id: UUID
+    raised_by: UUID
+    reason: str
+    description: Optional[str] = None
+    status: str
+    admin_response: Optional[str] = None
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AdminDashboardResponse(BaseModel):
+    total_users: int
+    total_providers: int
+    total_services: int
+    total_bookings: int
+    open_disputes: int
+    pending_payments: int
+    released_revenue: float
+
+
+class AdminProviderResponse(BaseModel):
+    uid: UUID
+    user_id: UUID
+    business_name: Optional[str] = None
+    bio: Optional[str] = None
+    rating: float
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AdminProviderServiceResponse(BaseModel):
+    uid: UUID
+    provider_id: UUID
+    name: str
+    description: Optional[str] = None
+    price: float
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AdminActionResponse(BaseModel):
+    detail: str
+
+
+class AdminDeletedBookingResponse(BaseModel):
+    uid: UUID
+    customer_id: UUID
+    service_id: UUID
+    status: str
+    deleted_at: datetime
+    deleted_by: Optional[UUID] = None
+    delete_reason: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AdminDeletedReviewResponse(BaseModel):
+    uid: UUID
+    booking_id: UUID
+    reviewer_id: UUID
+    rating: int
+    comment: Optional[str] = None
+    deleted_at: datetime
+    deleted_by: Optional[UUID] = None
+    delete_reason: Optional[str] = None
+
+    model_config = {"from_attributes": True}

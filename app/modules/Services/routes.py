@@ -48,7 +48,7 @@ async def update_service(
 ):
     """Update a service."""
     try:
-        return await service_service.update_service(service_id, service_data, session)
+        return await service_service.update_service(service_id, service_data, current_user, session)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
@@ -61,6 +61,6 @@ async def delete_service(
 ):
     """Delete a service."""
     try:
-        await service_service.delete_service(service_id, session)
+        await service_service.delete_service(service_id, current_user, session)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
