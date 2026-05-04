@@ -26,33 +26,6 @@ mail = FastMail(config=mail_config)
 
 
 def create_message(recipients: list[str], subject: str, body: str) -> MessageSchema:
-	return MessageSchema(
-		recipients=recipients,
-		subject=subject,
-		body=body,
-		subtype=MessageType.html,
-	)
+	return MessageSchema(recipients=recipients,subject=subject,body=body,subtype=MessageType.html)
 
 
-async def send_html_email(recipients: list[str], subject: str, body: str):
-	message = create_message(recipients=recipients, subject=subject, body=body)
-	await mail.send_message(message)
-
-
-def render_template(template_name: str, context: dict) -> str:
-	template_path = Path(BASE_DIR, "templates", template_name)
-	template_content = template_path.read_text(encoding="utf-8")
-	template = Template(template_content)
-	return template.render(**context)
-
-
-async def send_verification_email(recipient: str, verification_link: str):
-	body = render_template(
-		template_name="email_verification.html",
-		context={"verification_link": verification_link},
-	)
-	await send_html_email(
-		recipients=[recipient],
-		subject="Verify your email",
-		body=body,
-	)

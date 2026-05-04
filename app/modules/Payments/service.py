@@ -1,259 +1,203 @@
-import logging
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Optional
-
+# modules/Payment/service.py
 from sqlmodel import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException, status
+from sqlmodel.ext.asyncio.session import AsyncSession
 from uuid import UUID
-
-from app.core.models import Booking, Dispute, Payment, Provider, Service
+from fastapi import HTTPException, status
+from app.core.models import Payment, Booking, PaymentStatus, BookingStatus, UserRole, NotificationType
+from app.modules.Payments.schema import PaymentCreate
 from app.modules.Notifications.service import NotificationService
-from .schema import PaymentCreate
+from app.celery_task import (
+    send_payment_in_escrow_email,
+    send_payment_released_email,
+    send_payment_refunded_email
+)
+
+notification_service = NotificationService()
 
 
 class PaymentService:
-    ALLOWED_STATUS_TRANSITIONS = {
-        "pending": {"escrow", "refunded"},
-        "escrow": {"released", "refunded"},
-        "released": set(),
-        "refunded": set(),
-    }
 
-    def __init__(self):
-        self.notification_service = NotificationService()
-
-
-    async def _safe_create_notification(
-        self,
-        user_id: UUID,
-        title: str,
-        message: str,
-        session: AsyncSession,
-        event_type: Optional[str] = None,
-        entity_type: Optional[str] = None,
-        entity_id: Optional[UUID] = None,
-        payload: Optional[dict[str, Any]] = None,
-    ):
-        try:
-            await self.notification_service.create_notification(
-                user_id,
-                title,
-                message,
-                session,
-                event_type=event_type,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                payload=payload,
+    def _ensure_status_transition(self, payment, new_status: str):
+        allowed = {
+            PaymentStatus.PENDING.value: [],
+            PaymentStatus.ESCROW.value: [PaymentStatus.RELEASED.value, PaymentStatus.REFUNDED.value],
+            PaymentStatus.RELEASED.value: [],
+            PaymentStatus.REFUNDED.value: [],
+        }
+        current_status = payment.status.value if hasattr(payment.status, "value") else payment.status
+        target_status = new_status.value if hasattr(new_status, "value") else new_status
+        if target_status not in allowed.get(current_status, []):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Cannot move payment from {current_status} to {target_status}",
             )
-        except Exception:
-            logging.exception("Failed to create payment notification")
-
-
-    @staticmethod
-    def _normalize_amount(amount: float) -> Decimal:
-        return Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
 
     async def _get_payment_or_404(self, payment_id: UUID, session: AsyncSession):
-
-        payment = await session.get(Payment, payment_id)
-
+        payment = await self.get_payment_by_id(payment_id, session)
         if not payment:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Payment not found"
-            )
-
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
         return payment
-
 
     async def _get_booking_with_service(self, booking_id: UUID, session: AsyncSession):
-
         booking = await session.get(Booking, booking_id)
+        if not booking:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
+        return booking, getattr(booking, "service", None)
 
-        if not booking or booking.deleted_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Booking not found"
-            )
+    async def release_payment(self, payment_id: UUID, session: AsyncSession):
+        payment = await self._get_payment_or_404(payment_id, session)
+        booking, _service = await self._get_booking_with_service(payment.booking_id, session)
 
-        service = await session.get(Service, booking.service_id)
-        if not service:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Service not found"
-            )
-
-        return booking, service
-
-
-    async def _ensure_payment_access(self, payment: Payment, current_user, session: AsyncSession):
-
-        if current_user.role == "admin":
-            return
-
-        booking, service = await self._get_booking_with_service(payment.booking_id, session)
-
-        if booking.customer_id == current_user.uid:
-            return
-
-        provider = await session.get(Provider, service.provider_id)
-        if provider and provider.user_id == current_user.uid:
-            return
-
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this payment"
-        )
-
-
-    def _ensure_status_transition(self, payment: Payment, next_status: str):
-        allowed = self.ALLOWED_STATUS_TRANSITIONS.get(payment.status, set())
-        if next_status not in allowed:
+        if booking.status != BookingStatus.COMPLETED:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Invalid payment status transition from '{payment.status}' "
-                    f"to '{next_status}'"
-                ),
+                detail="Payment can only be released for completed bookings",
             )
 
+        self._ensure_status_transition(payment, PaymentStatus.RELEASED)
+        payment.status = PaymentStatus.RELEASED
+        await session.commit()
+        await session.refresh(payment)
+        return payment
 
-    async def _ensure_release_preconditions(self, payment: Payment, session: AsyncSession):
-        booking, _ = await self._get_booking_with_service(payment.booking_id, session)
-        if booking.status != "completed":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Payment can only be released for completed bookings"
-            )
+    async def refund_payment(self, payment_id: UUID, session: AsyncSession):
+        payment = await self._get_payment_or_404(payment_id, session)
+        self._ensure_status_transition(payment, PaymentStatus.REFUNDED)
+        payment.status = PaymentStatus.REFUNDED
+        await session.commit()
+        await session.refresh(payment)
+        return payment
 
-        statement = select(Dispute).where(
-            Dispute.booking_id == booking.uid,
-            Dispute.status.in_(["open", "under_review"]),
-        )
+    async def get_payment_by_booking_id(self, booking_id: UUID, session: AsyncSession):
+        statement = select(Payment).where(Payment.booking_id == booking_id)
         result = await session.exec(statement)
-        dispute = result.first()
-        if dispute:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot release payment while dispute is open or under review"
-            )
+        return result.first()
 
-
-    async def create_payment(self,payment_data: PaymentCreate,current_user,session: AsyncSession):
-
-        statement = select(Payment).where(Payment.booking_id == payment_data.booking_id)
+    async def get_payment_by_id(self, payment_id: UUID, session: AsyncSession):
+        statement = select(Payment).where(Payment.uid == payment_id)
         result = await session.exec(statement)
-        existing_payment = result.first()
-        if existing_payment:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Payment for this booking already exists"
-            )
+        return result.first()
 
-        booking, service = await self._get_booking_with_service(payment_data.booking_id, session)
+    async def create_payment(self, data: PaymentCreate, current_user, session: AsyncSession):
+        # validate booking exists
+        booking = await session.get(Booking, data.booking_id)
+        if not booking:
+            raise ValueError("Booking not found")
 
-        if current_user.role != "admin" and booking.customer_id != current_user.uid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only pay for your own bookings"
-            )
+        # only the customer of that booking can pay
+        if booking.customer_id != current_user.uid:
+            raise PermissionError("You can only pay for your own bookings")
 
-        requested_amount = self._normalize_amount(payment_data.amount)
-        expected_amount = self._normalize_amount(float(service.price))
-        if requested_amount != expected_amount:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Payment amount must match the service price of {expected_amount}"
-            )
+        # booking must be accepted before payment
+        if booking.status != BookingStatus.ACCEPTED:
+            raise ValueError("Can only pay for an accepted booking")
+
+        # prevent double payment
+        existing = await self.get_payment_by_booking_id(data.booking_id, session)
+        if existing:
+            raise ValueError("Payment already exists for this booking")
 
         payment = Payment(
-            booking_id=payment_data.booking_id,
-            amount=float(expected_amount),
-            status="pending"
+            **data.model_dump(),
+            status=PaymentStatus.ESCROW
         )
-
         session.add(payment)
+        await session.flush()
 
-        await session.commit()
-        await session.refresh(payment)
-
-        return payment
-
-
-    async def make_payment_escrow(self,payment_id: UUID,session: AsyncSession):
-
-        payment = await self._get_payment_or_404(payment_id, session)
-        self._ensure_status_transition(payment, "escrow")
-
-        payment.status = "escrow"
-
-        await session.commit()
-        await session.refresh(payment)
-
-        return payment
-
-
-    async def release_payment(self,payment_id: UUID,session: AsyncSession):
-
-        payment = await self._get_payment_or_404(payment_id, session)
-        self._ensure_status_transition(payment, "released")
-        await self._ensure_release_preconditions(payment, session)
-
-        payment.status = "released"
-
-        await session.commit()
-        await session.refresh(payment)
-
-        booking, service = await self._get_booking_with_service(payment.booking_id, session)
-        provider = await session.get(Provider, service.provider_id)
-
-        if provider:
-            await self._safe_create_notification(
-                user_id=provider.user_id,
-                title="Payment Released",
-                message=(
-                    f"Payment for booking {payment.booking_id} has been released to you."
-                ),
-                session=session,
-                event_type="payment.released",
-                entity_type="payment",
-                entity_id=payment.uid,
-                payload={"booking_id": str(payment.booking_id), "status": payment.status},
-            )
-
-        return payment
-    async def refund_payment(self,payment_id: UUID,session: AsyncSession):
-
-        payment = await self._get_payment_or_404(payment_id, session)
-        self._ensure_status_transition(payment, "refunded")
-
-        payment.status = "refunded"
-
-        await session.commit()
-        await session.refresh(payment)
-
-        booking, _ = await self._get_booking_with_service(payment.booking_id, session)
-
-        await self._safe_create_notification(
-            user_id=booking.customer_id,
-            title="Refund Issued",
-            message=(
-                f"A refund has been issued for booking {payment.booking_id}."
-            ),
-            session=session,
-            event_type="payment.refunded",
-            entity_type="payment",
-            entity_id=payment.uid,
-            payload={"booking_id": str(payment.booking_id), "status": payment.status},
+        # notify customer — money in escrow
+        await notification_service.create_notification(
+            user_uid=current_user.uid,
+            message=f"Your payment of ${data.amount:.2f} is safely held in escrow.",
+            notification_type=NotificationType.PAYMENT_IN_ESCROW,
+            session=session
+        )
+        send_payment_in_escrow_email.delay(
+            customer_email=current_user.email,
+            amount=data.amount,
+            service_name=booking.service.name
         )
 
+        # notify provider — safe to start
+        await notification_service.create_notification(
+            user_uid=booking.service.provider.user_id,
+            message=f"Payment of ${data.amount:.2f} is in escrow. You can start the service.",
+            notification_type=NotificationType.PAYMENT_IN_ESCROW,
+            session=session
+        )
+        send_payment_in_escrow_email.delay(
+            customer_email=booking.service.provider.user.email,
+            amount=data.amount,
+            service_name=booking.service.name
+        )
+
+        await session.commit()
+        await session.refresh(payment)
         return payment
-    
-    async def get_payment_by_id(self,payment_id: UUID,current_user,session: AsyncSession):
 
-        payment = await self._get_payment_or_404(payment_id, session)
-        await self._ensure_payment_access(payment, current_user, session)
+    async def release_to_provider(self, booking_id: UUID, current_user, session: AsyncSession):
+        booking = await session.get(Booking, booking_id)
+        if not booking:
+            raise ValueError("Booking not found")
 
+        # double lock — booking must be completed
+        if booking.status != BookingStatus.COMPLETED:
+            raise ValueError("Can only release payment for a completed booking")
+
+        # only consumer or admin can release
+        if current_user.role != UserRole.ADMIN and current_user.uid != booking.customer_id:
+            raise PermissionError("Not authorised to release this payment")
+
+        payment = await self.get_payment_by_booking_id(booking_id, session)
+        if not payment:
+            raise ValueError("Payment not found")
+
+        if payment.status != PaymentStatus.ESCROW:
+            raise ValueError(f"Payment is already {payment.status}")
+
+        payment.status = PaymentStatus.RELEASED
+
+        # notify provider
+        await notification_service.create_notification(
+            user_uid=booking.service.provider.user_id,
+            message=f"Payment of ${payment.amount:.2f} has been released to you.",
+            notification_type=NotificationType.PAYMENT_RELEASED,
+            session=session
+        )
+        send_payment_released_email.delay(
+            provider_email=booking.service.provider.user.email,
+            amount=payment.amount
+        )
+
+        await session.commit()
+        await session.refresh(payment)
+        return payment
+
+    async def refund_to_customer(self, booking_id: UUID, session: AsyncSession):
+        booking = await session.get(Booking, booking_id)
+        if not booking:
+            raise ValueError("Booking not found")
+
+        payment = await self.get_payment_by_booking_id(booking_id, session)
+        if not payment:
+            raise ValueError("Payment not found")
+
+        if payment.status != PaymentStatus.ESCROW:
+            raise ValueError(f"Cannot refund a payment that is {payment.status}")
+
+        payment.status = PaymentStatus.REFUNDED
+
+        # notify customer
+        await notification_service.create_notification(
+            user_uid=booking.customer_id,
+            message=f"Your payment of ${payment.amount:.2f} has been refunded.",
+            notification_type=NotificationType.PAYMENT_REFUNDED,
+            session=session
+        )
+        send_payment_refunded_email.delay(
+            customer_email=booking.customer.email,
+            amount=payment.amount
+        )
+
+        await session.commit()
+        await session.refresh(payment)
         return payment

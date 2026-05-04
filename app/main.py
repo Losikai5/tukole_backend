@@ -8,7 +8,6 @@ from app.modules.Payments.routes import payment_router
 from app.modules.Providers.routes import provider_router
 from app.modules.Disputes.routes import dispute_router
 from app.modules.Notifications.routes import notification_router
-from app.modules.Analytics.routes import analytics_router
 from app.modules.Admin.routes import admin_router
 from app.middleware import register_middleware
 
@@ -25,11 +24,10 @@ app.include_router(payment_router, prefix=f"/api/{version}/payments",tags=["Paym
 app.include_router(provider_router, prefix=f"/api/{version}/providers",tags=["Providers Management"])
 app.include_router(dispute_router, prefix=f"/api/{version}/disputes",tags=["Disputes Management"])
 app.include_router(notification_router, prefix=f"/api/{version}/notifications",tags=["Notifications"])
-app.include_router(analytics_router, prefix=f"/api/{version}/analytics",tags=["Analytics"])
 app.include_router(admin_router, prefix=f"/api/{version}/admin",tags=["Admin Dashboard"])
 
 
 
 @app.get("/")
 def read_root():
-    return {"Hello": "World"}
+    return {"Hello": "Welcome to TUKOLE API!"}

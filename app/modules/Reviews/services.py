@@ -1,219 +1,86 @@
-import logging
-from sqlalchemy.ext.asyncio import AsyncSession
+# modules/Review/service.py
 from sqlmodel import select, desc
-from fastapi import HTTPException, status
+from sqlmodel.ext.asyncio.session import AsyncSession
 from uuid import UUID
-from datetime import datetime
-from typing import Any, Optional
-
-from .schemes import ReviewCreate, UpdateReview
-from app.core.models import Review, Booking, Service, Provider
-from app.modules.Notifications.service import NotificationService
+from app.core.models import Review, Booking, BookingStatus, UserRole
+from app.modules.Reviews.schemes import ReviewCreate, ReviewUpdate
 
 
 class ReviewService:
 
-    def __init__(self):
-        self.notification_service = NotificationService()
-
-
-    async def _safe_create_notification(
-        self,
-        user_id: UUID,
-        title: str,
-        message: str,
-        session: AsyncSession,
-        event_type: Optional[str] = None,
-        entity_type: Optional[str] = None,
-        entity_id: Optional[UUID] = None,
-        payload: Optional[dict[str, Any]] = None,
-    ):
-        try:
-            await self.notification_service.create_notification(
-                user_id,
-                title,
-                message,
-                session,
-                event_type=event_type,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                payload=payload,
-            )
-        except Exception:
-            logging.exception("Failed to create review notification")
-
-
-    async def create_review(self,review_data: ReviewCreate,user_id: UUID,session: AsyncSession):
-        """Create a new review."""
-
-        booking = await session.get(Booking, review_data.booking_id)
-
-        if not booking or booking.deleted_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Booking not found"
-            )
-
-        # Ensure booking belongs to user
-        if booking.customer_id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User did not book this service"
-            )
-
-        # Ensure booking completed
-        if booking.status != "completed":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot review an incomplete booking"
-            )
-
-        # Ensure review does not already exist
-        statement = select(Review).where(
-            Review.booking_id == review_data.booking_id,
-            Review.deleted_at == None,
-        )
+    async def get_review_by_id(self, review_id: UUID, session: AsyncSession):
+        statement = select(Review).where(Review.uid == review_id)
         result = await session.exec(statement)
-
-        existing_review = result.first()
-
-        if existing_review:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Review already exists for this booking"
-            )
-
-        review = Review(**review_data.model_dump(),reviewer_id=user_id)
-
-        session.add(review)
-
-        await session.commit()
-        await session.refresh(review)
-
-        service = await session.get(Service, booking.service_id)
-        provider = await session.get(Provider, service.provider_id) if service else None
-
-        if provider:
-            await self._safe_create_notification(
-                user_id=provider.user_id,
-                title="New Review Received",
-                message=(
-                    f"You received a new review (rating: {review.rating}) for booking {review.booking_id}."
-                ),
-                session=session,
-                event_type="review.received",
-                entity_type="review",
-                entity_id=review.uid,
-                payload={"booking_id": str(review.booking_id), "rating": review.rating},
-            )
-
-        return review
-
+        return result.first()
 
     async def get_all_reviews(self, session: AsyncSession):
+        statement = select(Review).order_by(desc(Review.created_at))
+        result = await session.exec(statement)
+        return result.all()
 
-        statement = select(Review).where(Review.deleted_at == None).order_by(desc(Review.created_at))
+    async def get_provider_reviews(self, provider_id: UUID, session: AsyncSession):
+        statement = (
+            select(Review)
+            .join(Booking, Review.booking_id == Booking.uid)
+            .where(Booking.service.has(provider_id=provider_id))
+            .order_by(desc(Review.created_at))
+        )
+        result = await session.exec(statement)
+        return result.all()
 
-        results = await session.exec(statement)
+    async def create_review(self, data: ReviewCreate, current_user, session: AsyncSession):
+        # validate booking exists
+        booking = await session.get(Booking, data.booking_id)
+        if not booking:
+            raise ValueError("Booking not found")
 
-        return results.all()
+        # only the customer of that booking can review
+        if booking.customer_id != current_user.uid:
+            raise PermissionError("You can only review your own bookings")
 
+        # booking must be completed
+        if booking.status != BookingStatus.COMPLETED:
+            raise ValueError("Can only review a completed booking")
 
-    async def get_review_by_id(self, review_id: UUID, session: AsyncSession):
+        # one review per booking
+        existing = await session.exec(
+            select(Review).where(Review.booking_id == data.booking_id)
+        )
+        if existing.first():
+            raise ValueError("You have already reviewed this booking")
 
-        review = await session.get(Review, review_id)
-
-        if not review or review.deleted_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Review not found"
-            )
-
+        review = Review(**data.model_dump(), reviewer_id=current_user.uid)
+        session.add(review)
+        await session.commit()
+        await session.refresh(review)
         return review
 
-
-    async def update_review(self,review_id: UUID,review_data: UpdateReview,current_user,session: AsyncSession):
-
+    async def update_review(self, review_id: UUID, data: ReviewUpdate, current_user, session: AsyncSession):
         review = await self.get_review_by_id(review_id, session)
+        if not review:
+            raise ValueError("Review not found")
 
-        if current_user.role != "admin" and review.reviewer_id != current_user.uid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only update your own review"
-            )
+        # only the reviewer or admin can update
+        if current_user.role != UserRole.ADMIN and current_user.uid != review.reviewer_id:
+            raise PermissionError("You can only update your own reviews")
 
-        update_data = review_data.model_dump(exclude_unset=True)
-
+        update_data = data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(review, key, value)
 
         await session.commit()
         await session.refresh(review)
-
-        booking = await session.get(Booking, review.booking_id)
-        service = await session.get(Service, booking.service_id) if booking else None
-        provider = await session.get(Provider, service.provider_id) if service else None
-
-        if provider:
-            await self._safe_create_notification(
-                user_id=provider.user_id,
-                title="Review Updated",
-                message=(
-                    f"A review for booking {review.booking_id} has been updated (rating: {review.rating})."
-                ),
-                session=session,
-                event_type="review.updated",
-                entity_type="review",
-                entity_id=review.uid,
-                payload={"booking_id": str(review.booking_id), "rating": review.rating},
-            )
-
         return review
 
-
-    async def delete_review(
-        self,
-        review_id: UUID,
-        current_user,
-        session: AsyncSession,
-        delete_reason: Optional[str] = None,
-    ):
-
+    async def delete_review(self, review_id: UUID, current_user, session: AsyncSession):
         review = await self.get_review_by_id(review_id, session)
+        if not review:
+            raise ValueError("Review not found")
 
-        if current_user.role != "admin" and review.reviewer_id != current_user.uid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only delete your own review"
-            )
+        # only the reviewer or admin can delete
+        if current_user.role != UserRole.ADMIN and current_user.uid != review.reviewer_id:
+            raise PermissionError("You can only delete your own reviews")
 
-        booking = await session.get(Booking, review.booking_id)
-        service = await session.get(Service, booking.service_id) if booking else None
-        provider = await session.get(Provider, service.provider_id) if service else None
-
-        review.deleted_at = datetime.utcnow()
-        review.deleted_by = current_user.uid
-        review.delete_reason = delete_reason
+        await session.delete(review)
         await session.commit()
-        await session.refresh(review)
-
-        if provider:
-            await self._safe_create_notification(
-                user_id=provider.user_id,
-                title="Review Deleted",
-                message=(
-                    f"A review for booking {review.booking_id} has been deleted."
-                ),
-                session=session,
-                event_type="review.deleted",
-                entity_type="review",
-                entity_id=review.uid,
-                payload={
-                    "booking_id": str(review.booking_id),
-                    "rating": review.rating,
-                    "deleted_by": str(current_user.uid),
-                    "delete_reason": delete_reason,
-                },
-            )
-
         return True

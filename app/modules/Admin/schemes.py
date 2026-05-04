@@ -1,16 +1,18 @@
+# modules/Admin/schemas.py
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Optional
 from uuid import UUID
-
 from pydantic import BaseModel
+from app.core.models import UserRole, DisputeStatus
 
 
 class UserStatusUpdate(BaseModel):
     is_active: bool
 
 
+# Fixed — uses UserRole enum instead of Literal with "user"
 class UserRoleUpdate(BaseModel):
-    role: Literal["user", "provider", "admin"]
+    role: UserRole
 
 
 class AdminUserResponse(BaseModel):
@@ -26,9 +28,11 @@ class AdminUserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# Fixed — uses DisputeStatus enum and adds resolution field
 class AdminDisputeResolve(BaseModel):
-    status: Literal["under_review", "resolved", "rejected"]
-    admin_response: Optional[str] = None
+    status: DisputeStatus
+    admin_response: str
+    resolution: str  # "consumer" | "provider" — who admin ruled for
 
 
 class AdminDisputeResponse(BaseModel):
@@ -37,8 +41,9 @@ class AdminDisputeResponse(BaseModel):
     raised_by: UUID
     reason: str
     description: Optional[str] = None
-    status: str
+    status: DisputeStatus
     admin_response: Optional[str] = None
+    resolution: Optional[str] = None
     created_at: datetime
     resolved_at: Optional[datetime] = None
 

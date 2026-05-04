@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    MAIL_USERNAME: str = ""
-    MAIL_PASSWORD: str = ""
-    MAIL_FROM: str = ""
-    MAIL_PORT: int = 587
+    MAIL_USERNAME: str 
+    MAIL_PASSWORD: str
+    MAIL_FROM: str 
+    MAIL_PORT: int 
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_FROM_NAME: str = "Tukole"
     MAIL_STARTTLS: bool = True
@@ -21,3 +21,7 @@ class Settings(BaseSettings):
     DOMAIN: str = "localhost:8000"
 
 settings = Settings()
+
+broker_url = settings.REDIS_URL 
+result_backend = settings.REDIS_URL
+broker_connection_retry_on_startup = True

@@ -1,319 +1,150 @@
-import logging
+# modules/Booking/service.py
 from sqlmodel import select, desc
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException, status
+from sqlmodel.ext.asyncio.session import AsyncSession
 from uuid import UUID
-from datetime import timezone, datetime, timedelta
-from typing import Any, Optional
-
-from app.core.models import Booking, Provider, Service
+from datetime import datetime, timezone
+from app.core.models import Booking, Service, Provider, BookingStatus, UserRole, NotificationType
+from app.modules.Bookings.schemes import BookingCreate, BookingStatusUpdate, BookingCancel
 from app.modules.Notifications.service import NotificationService
-from .schemes import BookingCreate
+from app.modules.Payments.service import PaymentService
+from app.celery_task import send_booking_cancelled_email
+
+
+VALID_TRANSITIONS = {
+    BookingStatus.PENDING:   [BookingStatus.ACCEPTED, BookingStatus.CANCELLED],
+    BookingStatus.ACCEPTED:  [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
+    BookingStatus.COMPLETED: [],
+    BookingStatus.CANCELLED: []
+}
+
+
+notification_service = NotificationService()
 
 
 class BookingService:
-    VALID_BOOKING_STATUSES = {"pending", "accepted", "completed", "cancelled"}
-    PROVIDER_ALLOWED_STATUSES = {"completed", "cancelled"}
 
-    def __init__(self):
-        self.notification_service = NotificationService()
+    async def get_booking_by_id(self, booking_id: UUID, session: AsyncSession):
+        statement = select(Booking).where(Booking.uid == booking_id)
+        result = await session.exec(statement)
+        return result.first()
 
+    async def get_all_bookings(self, session: AsyncSession):
+        statement = select(Booking).order_by(desc(Booking.created_at))
+        result = await session.exec(statement)
+        return result.all()
 
-    async def _safe_create_notification(
-        self,
-        user_id: UUID,
-        title: str,
-        message: str,
-        session: AsyncSession,
-        event_type: Optional[str] = None,
-        entity_type: Optional[str] = None,
-        entity_id: Optional[UUID] = None,
-        payload: Optional[dict[str, Any]] = None,
-    ):
-        try:
-            await self.notification_service.create_notification(
-                user_id=user_id,
-                title=title,
-                message=message,
-                session=session,
-                event_type=event_type,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                payload=payload,
-            )
-        except Exception:
-            logging.exception("Failed to create notification")
+    async def get_customer_bookings(self, customer_id: UUID, session: AsyncSession):
+        statement = select(Booking).where(Booking.customer_id == customer_id).order_by(desc(Booking.created_at))
+        result = await session.exec(statement)
+        return result.all()
 
-
-    async def _get_booking_or_404(self, booking_id: str, session: AsyncSession):
-
-        booking = await session.get(Booking, booking_id)
-
-        if not booking or booking.deleted_at is not None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Booking not found")
-
-        return booking
-
-
-    async def _get_provider_for_booking(self, booking: Booking, session: AsyncSession):
-
-        service = await session.get(Service, booking.service_id)
-        if not service:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
-
-        provider = await session.get(Provider, service.provider_id)
+    async def get_provider_bookings(self, current_user, session: AsyncSession):
+        result = await session.exec(select(Provider).where(Provider.user_id == current_user.uid))
+        provider = result.first()
         if not provider:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+            raise ValueError("Provider profile not found")
 
-        return provider
+        statement = select(Booking).where(
+            Booking.service_id.in_(
+                select(Service.uid).where(Service.provider_id == provider.uid)
+            )
+        ).order_by(desc(Booking.created_at))
+        result = await session.exec(statement)
+        return result.all()
 
-
-    async def create_booking(self,booking_data: BookingCreate,user_id: UUID,session: AsyncSession):
-
-        # Check if service exists
-        service = await session.get(Service, booking_data.service_id)
-
+    async def create_booking(self, data: BookingCreate, current_user, session: AsyncSession):
+        service = await session.get(Service, data.service_id)
         if not service:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Service not found")
+            raise ValueError("Service not found")
 
-        booking_date = booking_data.booking_date
+        result = await session.exec(select(Provider).where(Provider.user_id == current_user.uid))
+        provider = result.first()
+        if provider and provider.uid == service.provider_id:
+            raise PermissionError("You cannot book your own service")
+
+        booking_date = data.booking_date
         if booking_date.tzinfo is not None:
             booking_date = booking_date.astimezone(timezone.utc).replace(tzinfo=None)
 
         booking = Booking(
-            service_id=booking_data.service_id,
-            customer_id=user_id,
-            booking_date=booking_date
+            **data.model_dump(exclude={"booking_date"}),
+            booking_date=booking_date,
+            customer_id=current_user.uid,
+            status=BookingStatus.PENDING,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
-
         session.add(booking)
-
         await session.commit()
         await session.refresh(booking)
-
-        provider = await session.get(Provider, service.provider_id)
-
-        if provider:
-            await self._safe_create_notification(
-                user_id=provider.user_id,
-                title="New Booking Request",
-                message=(
-                    f"You have a new booking request for service '{service.name}' "
-                    f"(booking ID: {booking.uid})."
-                ),
-                session=session,
-                event_type="booking.created",
-                entity_type="booking",
-                entity_id=booking.uid,
-                payload={"service_id": str(service.uid), "status": booking.status},
-            )
-
-        await self._safe_create_notification(
-            user_id=user_id,
-            title="Booking Created",
-            message=(
-                f"Your booking has been created successfully with status '{booking.status}' "
-                f"(booking ID: {booking.uid})."
-            ),
-            session=session,
-            event_type="booking.created",
-            entity_type="booking",
-            entity_id=booking.uid,
-            payload={"service_id": str(service.uid), "status": booking.status},
-        )
-
         return booking
 
+    async def update_booking_status(self, booking_id: UUID, data: BookingStatusUpdate, current_user, session: AsyncSession):
+        booking = await self.get_booking_by_id(booking_id, session)
+        if not booking:
+            raise ValueError("Booking not found")
 
-    async def get_user_bookings(self,user_id:str,session: AsyncSession):
+        allowed = VALID_TRANSITIONS.get(booking.status, [])
+        if data.status not in allowed:
+            raise ValueError(f"Cannot move booking from {booking.status} to {data.status}")
 
-        statement = select(Booking).where(
-            Booking.customer_id == user_id,
-            Booking.deleted_at == None,
-        )
+        result = await session.exec(select(Provider).where(Provider.user_id == current_user.uid))
+        provider = result.first()
 
-        result = await session.exec(statement)
+        if current_user.role != UserRole.ADMIN and (not provider or provider.uid != booking.service.provider_id):
+            raise PermissionError("You are not authorised to update this booking")
 
-        return result.all()
-
-
-    async def get_provider_bookings(self, user_id: str, session: AsyncSession):
-
-        provider_stmt = select(Provider).where(Provider.user_id == user_id)
-        provider_result = await session.exec(provider_stmt)
-        provider = provider_result.first()
-
-        if not provider:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Provider profile not found"
-            )
-
-        service_stmt = select(Service.uid).where(Service.provider_id == provider.uid)
-        service_result = await session.exec(service_stmt)
-        service_ids = service_result.all()
-
-        if not service_ids:
-            return []
-
-        booking_stmt = (
-            select(Booking)
-            .where(
-                Booking.service_id.in_(service_ids),
-                Booking.deleted_at == None,
-            )
-            .order_by(desc(Booking.created_at))
-        )
-        booking_result = await session.exec(booking_stmt)
-        return booking_result.all()
-
-
-    async def update_booking_status(self,booking_id:str,status_value: str,current_user,session: AsyncSession):
-
-        if status_value not in self.VALID_BOOKING_STATUSES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid booking status. Allowed values: {', '.join(sorted(self.VALID_BOOKING_STATUSES))}"
-            )
-
-        booking = await self._get_booking_or_404(booking_id, session)
-
-        if current_user.role != "admin":
-            provider = await self._get_provider_for_booking(booking, session)
-            if provider.user_id != current_user.uid:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You can only update bookings for your own services"
-                )
-
-            if status_value not in self.PROVIDER_ALLOWED_STATUSES:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Providers can only set booking status to completed or cancelled"
-                )
-
-        booking.status = status_value
-
+        booking.status = data.status
         await session.commit()
         await session.refresh(booking)
-
-        provider = await self._get_provider_for_booking(booking, session)
-
-        await self._safe_create_notification(
-            user_id=booking.customer_id,
-            title="Booking Status Updated",
-            message=(
-                f"Your booking {booking.uid} status has been updated to '{booking.status}'."
-            ),
-            session=session,
-            event_type="booking.status_updated",
-            entity_type="booking",
-            entity_id=booking.uid,
-            payload={"status": booking.status},
-        )
-
-        if provider.user_id != current_user.uid:
-            await self._safe_create_notification(
-                user_id=provider.user_id,
-                title="Booking Status Updated",
-                message=(
-                    f"Booking {booking.uid} status is now '{booking.status}'."
-                ),
-                session=session,
-                event_type="booking.status_updated",
-                entity_type="booking",
-                entity_id=booking.uid,
-                payload={"status": booking.status},
-            )
-
         return booking
-    
-    async def delete_booking(
-        self,
-        booking_id: str,
-        current_user,
-        session: AsyncSession,
-        delete_reason: Optional[str] = None,
-    ):
 
-        booking = await self._get_booking_or_404(booking_id, session)
+    async def cancel_booking(self, booking_id: UUID, data: BookingCancel, current_user, session: AsyncSession):
+        booking = await self.get_booking_by_id(booking_id, session)
+        if not booking:
+            raise ValueError("Booking not found")
 
-        if current_user.role != "admin" and booking.customer_id != current_user.uid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only delete your own bookings"
-            )
+        is_provider = booking.service.provider.user_id == current_user.uid
+        is_customer = booking.customer_id == current_user.uid
+        is_admin = current_user.role == UserRole.ADMIN
 
-        service = await session.get(Service, booking.service_id)
-        provider = await session.get(Provider, service.provider_id) if service else None
+        # only parties involved or admin can cancel
+        if not is_provider and not is_customer and not is_admin:
+            raise PermissionError("You are not authorised to cancel this booking")
 
-        # Persist cancelled status before soft-delete for consistent state transitions.
-        booking.status = "cancelled"
-        booking.deleted_at = datetime.utcnow()
+        if is_customer:
+            # customer can only cancel PENDING bookings
+            if booking.status != BookingStatus.PENDING:
+                raise ValueError("You can only cancel a pending booking")
+
+        elif is_provider:
+            # provider can cancel PENDING or ACCEPTED
+            if booking.status not in [BookingStatus.PENDING, BookingStatus.ACCEPTED]:
+                raise ValueError(f"Cannot cancel a booking that is already {booking.status}")
+
+            # auto refund if provider cancels ACCEPTED booking
+            if booking.status == BookingStatus.ACCEPTED:
+                payment_service = PaymentService()
+                payment = await payment_service.get_payment_by_booking_id(booking.uid, session)
+                if payment:
+                    await payment_service.refund_to_customer(booking.uid, session)
+
+        booking.status = BookingStatus.CANCELLED
+        booking.deleted_at = datetime.now(timezone.utc)
         booking.deleted_by = current_user.uid
-        booking.delete_reason = delete_reason
+        booking.delete_reason = data.delete_reason
+
+        # notify customer
+        await notification_service.create_notification(
+            user_uid=booking.customer_id,
+            message="Your booking has been cancelled.",
+            notification_type=NotificationType.BOOKING_COMPLETED,
+            session=session
+        )
+        send_booking_cancelled_email.delay(
+            recipient_email=booking.customer.email,
+            service_name=booking.service.name
+        )
+
         await session.commit()
         await session.refresh(booking)
-
-        if provider and provider.user_id != current_user.uid:
-            await self._safe_create_notification(
-                user_id=provider.user_id,
-                title="Booking Cancelled",
-                message=(
-                    f"Booking {booking.uid} was cancelled by the customer/admin."
-                ),
-                session=session,
-                event_type="booking.cancelled",
-                entity_type="booking",
-                entity_id=booking.uid,
-                payload={
-                    "status": "cancelled",
-                    "deleted_by": str(current_user.uid),
-                    "delete_reason": delete_reason,
-                },
-            )
-
-        return {"detail": "Booking deleted successfully"}
-
-
-    async def expire_pending_bookings(self, timeout_minutes: int, session: AsyncSession):
-
-        if timeout_minutes <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="timeout_minutes must be greater than 0"
-            )
-
-        cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
-
-        statement = select(Booking).where(
-            Booking.status == "pending",
-            Booking.created_at <= cutoff,
-            Booking.deleted_at == None,
-        )
-        result = await session.exec(statement)
-        expired_bookings = result.all()
-
-        if not expired_bookings:
-            return {"expired_count": 0}
-
-        for booking in expired_bookings:
-            booking.status = "cancelled"
-
-        await session.commit()
-
-        for booking in expired_bookings:
-            await self._safe_create_notification(
-                user_id=booking.customer_id,
-                title="Booking Expired",
-                message=(
-                    f"Your booking {booking.uid} expired because the provider did not respond in time."
-                ),
-                session=session,
-                event_type="booking.expired",
-                entity_type="booking",
-                entity_id=booking.uid,
-                payload={"status": "cancelled", "reason": "provider_timeout"},
-            )
-
-        return {"expired_count": len(expired_bookings)}
+        return booking

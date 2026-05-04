@@ -11,9 +11,3 @@ async def is_token_revoked(jti: str) -> bool:
     entry = await token_blocklist_redis.get(jti)
     return entry is not None
 
-
-async def acquire_verification_resend_slot(email: str, cooldown_seconds: int = 60) -> bool:
-    key = f"verify_resend:{email.lower()}"
-    # NX ensures we only set the key if it does not already exist.
-    created = await token_blocklist_redis.set(key, "1", ex=cooldown_seconds, nx=True)
-    return bool(created)

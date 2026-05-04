@@ -1,29 +1,32 @@
 from typing import Literal
-
-from pydantic import BaseModel, EmailStr, Field
+from sqlmodel import SQLModel, Field
+from pydantic import BaseModel, EmailStr, field_validator
 import uuid
+from app.core.models import UserRole
 from datetime import datetime
+
+
+
 
 class SignUpScheme(BaseModel):
     username: str
     first_name: str
     last_name: str
-    role: Literal["user", "provider"] = Field(default="user")
     email: EmailStr
     password: str
+    role: UserRole = UserRole.CONSUMER
 
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "username": "johndoe",
-                "first_name": "John",
-                "last_name": "Doe",
-                "role": "user",
-                "email": "johndoe@example.com",
-                "password": "strongpassword123"
-            }
-        }
-    }
+    @field_validator("role", mode="before")
+    @classmethod
+    def role_must_not_be_admin(cls, v):
+        if v == "user":
+            return UserRole.CONSUMER
+        if v == UserRole.ADMIN:
+            raise ValueError("Cannot register as admin")
+        return v
+    
+
+   
 class SignInScheme(BaseModel):
     email: EmailStr
     password: str
@@ -47,6 +50,7 @@ class UserResponseScheme(BaseModel):
     created_at: datetime 
     updated_at: datetime
     model_config = {
+        "from_attributes": True,
         "json_schema_extra": {
             "example": {
                 "uid": "123e4567-e89b-12d3-a456-426614174000",
@@ -65,3 +69,6 @@ class UserResponseScheme(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+
+

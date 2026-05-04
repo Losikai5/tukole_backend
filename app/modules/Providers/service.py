@@ -1,95 +1,69 @@
 from sqlmodel import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
+from uuid import UUID
 from fastapi import HTTPException, status
-from app.core.models import Provider ,User, Service
-from .schemes import ProviderBase
+from app.core.models import Provider, User, UserRole
+from app.modules.Providers.schemes import ProviderCreate, ProviderUpdate
+
 
 class ProviderService:
-    @staticmethod
-    def _ensure_provider_access(provider: Provider, current_user):
-        if current_user.role == "admin":
-            return
 
-        if provider.user_id != current_user.uid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only modify your own provider profile"
-            )
+    def _ensure_provider_access(self, provider: Provider, current_user):
+        if current_user.role == UserRole.ADMIN:
+            return provider
 
-    async def create_provider(self, provider_data: ProviderBase, user_id: str, session: AsyncSession):
-        """Create a new provider profile."""
-        # Check if the user already has a provider profile
-        user = await session.get(User, user_id)
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        #check role 
-        if user.role != "provider":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User does not have provider role")
-        #check if provider profile already exists
-        statement = select(Provider).where(Provider.user_id == user_id)
-        result = await session.exec(statement)
-        existing_provider = result.first()
-        if existing_provider:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already has a provider profile")
+        if current_user.uid != provider.user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only update your own provider profile")
 
-        new_provider = Provider(**provider_data.model_dump(), user_id=user_id)
-        session.add(new_provider)
-        await session.commit()
-        await session.refresh(new_provider)
-        return new_provider
-    
-    async def get_provider_by_user_id(self, user_id: str, session: AsyncSession):
-        """Get a provider profile by user ID."""
-        statement = select(Provider).where(Provider.user_id == user_id)
-        result = await session.exec(statement)
-        provider = result.first()
-        if not provider:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider profile not found")
         return provider
-    
-    async def update_provider(self, provider_id: str, provider_data: ProviderBase, current_user, session: AsyncSession):
-        """Update an existing provider profile."""
-        statement = select(Provider).where(Provider.uid == provider_id)
+
+    async def get_provider_by_user_id(self, user_id: UUID, session: AsyncSession):
+        statement = select(Provider).where(Provider.user_id == user_id)
         result = await session.exec(statement)
-        provider = result.first()
+        return result.first()
+
+    async def get_all_providers(self, session: AsyncSession):
+        statement = select(Provider)
+        result = await session.exec(statement)
+        return result.all()
+
+    async def create_provider(self, user: User, data: ProviderCreate, session: AsyncSession):
+        # Check 1 — already a provider?
+        existing = await self.get_provider_by_user_id(user.uid, session)
+        if existing:
+            raise ValueError("Provider profile already exists")
+
+        # Create provider profile
+        provider = Provider(**data.model_dump(), user_id=user.uid)
+        session.add(provider)
+
+        # Atomic update — upgrade role
+        user.role = UserRole.PROVIDER
+        session.add(user)
+
+        await session.commit()
+        await session.refresh(provider)
+        return provider
+
+    async def update_provider(self, current_user: User, user_id: UUID, data: ProviderUpdate, session: AsyncSession):
+        provider = await self.get_provider_by_user_id(user_id, session)
         if not provider:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider profile not found")
+            raise ValueError("Provider profile not found")
 
         self._ensure_provider_access(provider, current_user)
 
-        update_data = provider_data.model_dump(exclude_unset=True)
+        update_data = data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(provider, key, value)
 
         await session.commit()
         await session.refresh(provider)
         return provider
-    
-    async def delete_provider(self, provider_id: str, current_user, session: AsyncSession):
-        """Delete a provider profile."""
-        statement = select(Provider).where(Provider.uid == provider_id)
-        result = await session.exec(statement)
-        provider = result.first()
+
+    async def delete_provider(self, provider_user_id: UUID, session: AsyncSession):
+        provider = await self.get_provider_by_user_id(provider_user_id, session)
         if not provider:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider profile not found")
-
-        self._ensure_provider_access(provider, current_user)
-
-        # Prevent orphaning services because services.provider_id is NOT NULL.
-        service_stmt = select(Service).where(Service.provider_id == provider.uid)
-        services_result = await session.exec(service_stmt)
-        provider_services = services_result.all()
-        if provider_services:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete provider profile while it still has services. Delete services first."
-            )
-
+            raise ValueError("Provider profile not found")
         await session.delete(provider)
         await session.commit()
         return True
-    async def get_all_providers(self, session: AsyncSession):
-        """Get all provider profiles."""
-        statement = select(Provider)
-        result = await session.exec(statement)
-        return result.all()
