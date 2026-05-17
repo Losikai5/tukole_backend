@@ -14,6 +14,7 @@ from app.celery_task import (
     send_dispute_resolved_email,
 )
 
+
 dispute_router = APIRouter()
 dispute_service = DisputeService()
 notification_service = NotificationService()
@@ -26,6 +27,14 @@ async def get_all_disputes(
     _=Depends(RoleChecker([UserRole.ADMIN]))
 ):
     return await dispute_service.get_all_disputes(session)
+
+
+@dispute_router.get("/my-disputes", response_model=list[DisputeResponse])
+async def my_disputes(
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return await dispute_service.get_user_disputes(current_user, session)
 
 
 # Admin only — get single dispute
@@ -118,11 +127,3 @@ async def update_dispute(
             send_dispute_resolved_email.delay(raiser.email, dispute.admin_response or "", won)
 
     return dispute
-
-
-@dispute_router.get("/my-disputes", response_model=list[DisputeResponse])
-async def my_disputes(
-    session: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return await dispute_service.get_user_disputes(current_user, session)
