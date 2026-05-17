@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const initialLoginForm = {
@@ -18,12 +18,27 @@ const initialRegisterForm = {
 
 export default function AuthPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { isAuthenticated, login, register } = useAuth()
   const [mode, setMode] = useState('login')
   const [loginForm, setLoginForm] = useState(initialLoginForm)
   const [registerForm, setRegisterForm] = useState(initialRegisterForm)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const requestedMode = params.get('mode')
+    const requestedRole = params.get('role')
+
+    if (requestedMode === 'register') {
+      setMode('register')
+    }
+
+    if (requestedRole === 'provider') {
+      setRegisterForm((current) => ({ ...current, role: 'provider' }))
+    }
+  }, [location.search])
 
   if (isAuthenticated) {
     return <Navigate to="/workspace" replace />
@@ -69,24 +84,21 @@ export default function AuthPage() {
     <div className="auth-shell">
       <section className="panel auth-shell__story">
         <p className="eyebrow">Get started</p>
-        <h1>Make Tukole feel premium from the first screen.</h1>
-        <p>
-          This frontend keeps the entry flow simple: sign in fast, register in one place, and head
-          straight into a role-aware workspace after authentication.
-        </p>
+        <h1>Sign in and get moving.</h1>
+        <p>Use one entry point for login, registration, and the workspace.</p>
 
         <div className="story-grid">
           <article className="story-card">
             <h3>Users</h3>
-            <p>Book services, pay accurately, leave reviews, and keep track of notifications.</p>
+            <p>Book services, pay, and leave reviews.</p>
           </article>
           <article className="story-card">
             <h3>Providers</h3>
-            <p>Set up a provider profile and publish offers customers can book immediately.</p>
+            <p>Set up a profile and publish offers.</p>
           </article>
           <article className="story-card">
             <h3>Admins</h3>
-            <p>Oversee disputes, user management, platform health, and delivery metrics.</p>
+            <p>Oversee disputes, users, and platform health.</p>
           </article>
         </div>
 

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import func, select
 
 from app.core.models import (
-    Booking, Dispute, DisputeStatus, Payment, Provider,
+    Booking, Dispute, DisputeStatus, Notification, Payment, Provider,
     Review, Service, User, NotificationType
 )
 from app.modules.Notifications.service import NotificationService
@@ -95,6 +95,10 @@ class AdminService:
 
     async def delete_user(self, user_id: UUID, session: AsyncSession):
         user = await self._get_user_or_404(user_id, session)
+        notifications = await session.exec(select(Notification).where(Notification.user_uid == user_id))
+        for notification in notifications.all():
+            await session.delete(notification)
+
         try:
             await session.delete(user)
             await session.commit()
@@ -154,6 +158,7 @@ class AdminService:
         status_value: str,
         admin_response: str,
         resolution: str,  # "consumer" | "provider"
+        current_user: User,
         session: AsyncSession,
     ):
         dispute = await self._get_dispute_or_404(dispute_id, session)
@@ -226,8 +231,8 @@ class AdminService:
                 )
 
             elif resolution == "provider":
-                # release payment to provider
-                await payment_service.release_to_provider(booking.uid, session)
+                # release payment to provider (thread admin user through)
+                await payment_service.release_to_provider(booking.uid, current_user, session)
 
                 # notify provider — they won
                 await notification_service.create_notification(

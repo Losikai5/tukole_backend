@@ -3,7 +3,9 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from uuid import UUID
 from fastapi import HTTPException, status
-from app.core.models import Payment, Booking, PaymentStatus, BookingStatus, UserRole, NotificationType
+from sqlalchemy.orm import selectinload
+from datetime import datetime, timezone
+from app.core.models import Payment, Booking, Service, Provider, PaymentStatus, BookingStatus, UserRole, NotificationType
 from app.modules.Payments.schema import PaymentCreate
 from app.modules.Notifications.service import NotificationService
 from app.celery_task import (
@@ -16,6 +18,11 @@ notification_service = NotificationService()
 
 
 class PaymentService:
+
+    def _ensure_created_at(self, payment):
+        if payment and payment.created_at is None:
+            payment.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        return payment
 
     def _ensure_status_transition(self, payment, new_status: str):
         allowed = {
@@ -38,15 +45,26 @@ class PaymentService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
         return payment
 
-    async def _get_booking_with_service(self, booking_id: UUID, session: AsyncSession):
-        booking = await session.get(Booking, booking_id)
+    async def _get_booking_with_relations(self, booking_id: UUID, session: AsyncSession):
+        statement = (
+            select(Booking)
+            .where(Booking.uid == booking_id)
+            .options(
+                selectinload(Booking.service)
+                .selectinload(Service.provider)
+                .selectinload(Provider.user),
+                selectinload(Booking.customer),
+            )
+        )
+        result = await session.exec(statement)
+        booking = result.first()
         if not booking:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
-        return booking, getattr(booking, "service", None)
+        return booking
 
     async def release_payment(self, payment_id: UUID, session: AsyncSession):
         payment = await self._get_payment_or_404(payment_id, session)
-        booking, _service = await self._get_booking_with_service(payment.booking_id, session)
+        booking = await self._get_booking_with_relations(payment.booking_id, session)
 
         if booking.status != BookingStatus.COMPLETED:
             raise HTTPException(
@@ -58,7 +76,7 @@ class PaymentService:
         payment.status = PaymentStatus.RELEASED
         await session.commit()
         await session.refresh(payment)
-        return payment
+        return self._ensure_created_at(payment)
 
     async def refund_payment(self, payment_id: UUID, session: AsyncSession):
         payment = await self._get_payment_or_404(payment_id, session)
@@ -66,23 +84,21 @@ class PaymentService:
         payment.status = PaymentStatus.REFUNDED
         await session.commit()
         await session.refresh(payment)
-        return payment
+        return self._ensure_created_at(payment)
 
     async def get_payment_by_booking_id(self, booking_id: UUID, session: AsyncSession):
         statement = select(Payment).where(Payment.booking_id == booking_id)
         result = await session.exec(statement)
-        return result.first()
+        return self._ensure_created_at(result.first())
 
     async def get_payment_by_id(self, payment_id: UUID, session: AsyncSession):
         statement = select(Payment).where(Payment.uid == payment_id)
         result = await session.exec(statement)
-        return result.first()
+        return self._ensure_created_at(result.first())
 
     async def create_payment(self, data: PaymentCreate, current_user, session: AsyncSession):
         # validate booking exists
-        booking = await session.get(Booking, data.booking_id)
-        if not booking:
-            raise ValueError("Booking not found")
+        booking = await self._get_booking_with_relations(data.booking_id, session)
 
         # only the customer of that booking can pay
         if booking.customer_id != current_user.uid:
@@ -132,12 +148,10 @@ class PaymentService:
 
         await session.commit()
         await session.refresh(payment)
-        return payment
+        return self._ensure_created_at(payment)
 
     async def release_to_provider(self, booking_id: UUID, current_user, session: AsyncSession):
-        booking = await session.get(Booking, booking_id)
-        if not booking:
-            raise ValueError("Booking not found")
+        booking = await self._get_booking_with_relations(booking_id, session)
 
         # double lock — booking must be completed
         if booking.status != BookingStatus.COMPLETED:
@@ -170,12 +184,10 @@ class PaymentService:
 
         await session.commit()
         await session.refresh(payment)
-        return payment
+        return self._ensure_created_at(payment)
 
     async def refund_to_customer(self, booking_id: UUID, session: AsyncSession):
-        booking = await session.get(Booking, booking_id)
-        if not booking:
-            raise ValueError("Booking not found")
+        booking = await self._get_booking_with_relations(booking_id, session)
 
         payment = await self.get_payment_by_booking_id(booking_id, session)
         if not payment:

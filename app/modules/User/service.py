@@ -1,8 +1,9 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, desc
+from sqlalchemy.exc import IntegrityError
 from uuid import UUID
 from .schemes import UserCreate, UserUpdate
-from app.core.models import User as UserModel, UserRole
+from app.core.models import Notification, User as UserModel, UserRole
 
 
 class UserService:
@@ -54,6 +55,14 @@ class UserService:
         if not user:
             raise ValueError("User not found")
 
-        await session.delete(user)
-        await session.commit()
+        notifications = await session.exec(select(Notification).where(Notification.user_uid == user_id))
+        for notification in notifications.all():
+            await session.delete(notification)
+
+        try:
+            await session.delete(user)
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise ValueError("Cannot delete user because related records exist") from exc
         return True

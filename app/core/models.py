@@ -1,6 +1,6 @@
 import uuid
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import SQLModel, Field, Relationship, Column
 import sqlalchemy.dialects.postgresql as pg
@@ -8,9 +8,7 @@ from sqlalchemy import func, Numeric
 from decimal import Decimal
 
 
-# ─────────────────────────────────────────────
-# ENUMS
-# ─────────────────────────────────────────────
+
 
 class UserRole(str, enum.Enum):
     CONSUMER = "consumer"
@@ -34,6 +32,11 @@ class DisputeStatus(str, enum.Enum):
     UNDER_REVIEW = "under_review"
     RESOLVED     = "resolved"
     REJECTED     = "rejected"
+
+
+class DisputeResolution(str, enum.Enum):
+    CONSUMER = "consumer"
+    PROVIDER = "provider"
 
 class NotificationType(str, enum.Enum):
     # Account
@@ -72,7 +75,7 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=False, nullable=False)
     is_verified: bool = Field(default=False, nullable=False)
     role: UserRole = Field(default=UserRole.CONSUMER, sa_column=Column(pg.VARCHAR, nullable=False))
-    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, server_default=func.now()))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None), sa_column=Column(pg.TIMESTAMP, server_default=func.now()))
     updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, server_default=func.now(), onupdate=func.now()))
 
     # Relationships

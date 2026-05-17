@@ -70,7 +70,19 @@ export default function AppShell({ children }) {
       <main className="site-main">{children}</main>
 
       <footer className="site-footer">
-        <p>Tukole pairs beautiful customer journeys with your FastAPI marketplace backend.</p>
+        <div className="footer-grid">
+          <div>
+            <h3>Tukole</h3>
+            <p>Let us work - Uganda&apos;s service marketplace.</p>
+          </div>
+          <div>
+            <h4>Platform</h4>
+            <p>
+              <Link to="/">Discover</Link> · <Link to="/auth">Sign in</Link> ·{' '}
+              <Link to="/workspace">Workspace</Link>
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   )

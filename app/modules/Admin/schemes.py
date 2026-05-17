@@ -23,7 +23,7 @@ class AdminUserResponse(BaseModel):
     email: str
     is_active: bool
     role: str
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -44,7 +44,7 @@ class AdminDisputeResponse(BaseModel):
     status: DisputeStatus
     admin_response: Optional[str] = None
     resolution: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
@@ -66,7 +66,7 @@ class AdminProviderResponse(BaseModel):
     business_name: Optional[str] = None
     bio: Optional[str] = None
     rating: float
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -77,8 +77,8 @@ class AdminProviderServiceResponse(BaseModel):
     name: str
     description: Optional[str] = None
     price: float
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -92,7 +92,7 @@ class AdminDeletedBookingResponse(BaseModel):
     customer_id: UUID
     service_id: UUID
     status: str
-    deleted_at: datetime
+    deleted_at: Optional[datetime] = None
     deleted_by: Optional[UUID] = None
     delete_reason: Optional[str] = None
 
@@ -105,7 +105,7 @@ class AdminDeletedReviewResponse(BaseModel):
     reviewer_id: UUID
     rating: int
     comment: Optional[str] = None
-    deleted_at: datetime
+    deleted_at: Optional[datetime] = None
     deleted_by: Optional[UUID] = None
     delete_reason: Optional[str] = None
 

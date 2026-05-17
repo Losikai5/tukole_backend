@@ -2,10 +2,10 @@
 import os
 from celery import Celery
 from app.core.config import settings
-from app.email import create_message
+from app.email import send_email
 from asgiref.sync import async_to_sync
 
-app = Celery("app")
+app = Celery('tukole_backend')
 
 app.conf.update(
     broker_url=settings.REDIS_URL,
@@ -30,7 +30,7 @@ def send_verification_email(recipient: str, verification_link: str):
     <h1>Verify your Email</h1>
     <p>Please click this <a href="{verification_link}">link</a> to verify your account.</p>
     """
-    async_to_sync(create_message)(subject=subject, recipients=[recipient], body=body)
+    async_to_sync(send_email)(subject=subject, recipients=[recipient], body=body)
 
 
 # ─────────────────────────────────────────────
@@ -50,7 +50,7 @@ def send_booking_created_email(self, provider_email: str, service_name: str, boo
         </ul>
         <p>Please log in to accept or decline the booking.</p>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[provider_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[provider_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -67,7 +67,7 @@ def send_booking_accepted_email(self, customer_email: str, service_name: str, bo
         </ul>
         <p>The provider is ready for you. Please ensure payment is made.</p>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[customer_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[customer_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -88,7 +88,7 @@ def send_booking_completed_email(self, recipient_email: str, service_name: str, 
             <p>Your booking for <strong>{service_name}</strong> has been completed.</p>
             <p>Please leave a review for the provider.</p>
             """
-        async_to_sync(create_message)(subject=subject, recipients=[recipient_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[recipient_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -101,7 +101,7 @@ def send_booking_cancelled_email(self, recipient_email: str, service_name: str):
         <h1>Booking Cancelled</h1>
         <p>The booking for <strong>{service_name}</strong> has been cancelled.</p>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[recipient_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[recipient_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -126,7 +126,7 @@ def send_dispute_raised_email(self, recipient_email: str, booking_uid: str, is_a
             <p>A dispute has been filed against your booking <strong>{booking_uid}</strong>.</p>
             <p>Please log in to provide your evidence.</p>
             """
-        async_to_sync(create_message)(subject=subject, recipients=[recipient_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[recipient_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -140,7 +140,7 @@ def send_dispute_under_review_email(self, recipient_email: str, booking_uid: str
         <p>The admin is reviewing the dispute on booking <strong>{booking_uid}</strong>.</p>
         <p>You will be notified once a decision has been made.</p>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[recipient_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[recipient_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -161,7 +161,7 @@ def send_dispute_resolved_email(self, recipient_email: str, admin_response: str,
             <p>{admin_response}</p>
             <p>Unfortunately the dispute was not resolved in your favour.</p>
             """
-        async_to_sync(create_message)(subject=subject, recipients=[recipient_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[recipient_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -182,7 +182,7 @@ def send_review_made_email(self, provider_email: str, rating: int, comment: str)
             <li><strong>Comment:</strong> {comment or "No comment left"}</li>
         </ul>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[provider_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[provider_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -201,7 +201,7 @@ def send_payment_in_escrow_email(self, customer_email: str, amount: float, servi
         is safely held in escrow.</p>
         <p>It will be released to the provider once the service is completed.</p>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[customer_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[customer_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -214,7 +214,7 @@ def send_payment_released_email(self, provider_email: str, amount: float):
         <h1>Your Payment has been Released!</h1>
         <p>The amount of <strong>${amount:.2f}</strong> has been released from escrow to your account.</p>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[provider_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[provider_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)
 
@@ -227,6 +227,6 @@ def send_payment_refunded_email(self, customer_email: str, amount: float):
         <h1>Your Payment has been Refunded!</h1>
         <p>The amount of <strong>${amount:.2f}</strong> has been refunded to your account.</p>
         """
-        async_to_sync(create_message)(subject=subject, recipients=[customer_email], body=body)
+        async_to_sync(send_email)(subject=subject, recipients=[customer_email], body=body)
     except Exception as exc:
         raise self.retry(exc=exc)

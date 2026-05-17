@@ -129,7 +129,7 @@ class BookingService:
                     await payment_service.refund_to_customer(booking.uid, session)
 
         booking.status = BookingStatus.CANCELLED
-        booking.deleted_at = datetime.now(timezone.utc)
+        booking.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
         booking.deleted_by = current_user.uid
         booking.delete_reason = data.delete_reason
 
@@ -137,7 +137,7 @@ class BookingService:
         await notification_service.create_notification(
             user_uid=booking.customer_id,
             message="Your booking has been cancelled.",
-            notification_type=NotificationType.BOOKING_COMPLETED,
+            notification_type=NotificationType.BOOKING_CANCELLED,
             session=session
         )
         send_booking_cancelled_email.delay(

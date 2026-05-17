@@ -3,7 +3,7 @@ from uuid import UUID
 from typing import Optional
 from datetime import datetime
 
-from app.core.models import DisputeStatus
+from app.core.models import DisputeStatus, DisputeResolution
 
 
 class DisputeCreate(BaseModel):
@@ -22,9 +22,9 @@ class DisputeCreate(BaseModel):
     }
 
 class DisputeAdminUpdate(BaseModel):
-    status:DisputeStatus
+    status: DisputeStatus
     admin_response: str
-    resolution: str  
+    resolution: DisputeResolution  
 
 
 class DisputeResponse(BaseModel):

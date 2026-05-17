@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
-from jinja2 import Template
 
 from app.core.config import settings
 
@@ -25,7 +24,16 @@ mail_config = ConnectionConfig(
 mail = FastMail(config=mail_config)
 
 
-def create_message(recipients: list[str], subject: str, body: str) -> MessageSchema:
-	return MessageSchema(recipients=recipients,subject=subject,body=body,subtype=MessageType.html)
+
+
+
+async def send_email(recipients: list[str], subject: str, body: str) -> None:
+	message = MessageSchema(
+		subject=subject,
+		recipients=recipients,
+		body=body,
+		subtype=MessageType.html,
+	)
+	await mail.send_message(message)
 
 

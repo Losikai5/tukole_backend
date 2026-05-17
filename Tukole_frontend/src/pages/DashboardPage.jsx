@@ -63,7 +63,7 @@ export default function DashboardPage() {
   const [editingService, setEditingService] = useState(null)
   const [editServiceForm, setEditServiceForm] = useState({ description: '', name: '', price: '' })
 
-  const providerMode = user?.role === 'provider' || user?.role === 'admin'
+  const providerMode = user?.role === 'provider'
   const adminMode = user?.role === 'admin'
   const serviceLookup = Object.fromEntries(workspace.services.map((service) => [service.uid, service]))
   const myReviews = workspace.reviews.filter((review) => review.reviewer_id === user?.uid)
@@ -345,8 +345,8 @@ export default function DashboardPage() {
     return (
       <section className="page-state">
         <div className="state-badge">Loading</div>
-        <h1>Building your workspace...</h1>
-        <p>We are gathering your services, bookings, and notifications.</p>
+        <h1>Loading workspace...</h1>
+        <p>Fetching services, bookings, and alerts.</p>
       </section>
     )
   }
@@ -357,10 +357,10 @@ export default function DashboardPage() {
         <div className="hero-panel__copy">
           <p className="eyebrow">Workspace</p>
           <h1>Welcome back, {user.first_name || user.username}.</h1>
-          <p className="hero-panel__text">Manage bookings, payments, reviews, disputes, and alerts from one place.</p>
+          <p className="hero-panel__text">Manage bookings, payments, reviews, and alerts.</p>
           <div className="hero-panel__actions">
-            <button className="button" onClick={() => loadWorkspaceData(false)} type="button">Refresh data</button>
-            <Link className="button button--ghost" to="/">Visit landing page</Link>
+            <button className="button" onClick={() => loadWorkspaceData(false)} type="button">Refresh</button>
+            <Link className="button button--ghost" to="/">Home</Link>
           </div>
         </div>
         <div className="hero-panel__spotlight">
@@ -369,9 +369,9 @@ export default function DashboardPage() {
             <h2>{user.username}</h2>
             <p>{user.email}</p>
             <div className="workspace-profile__meta">
-              <span>{user.is_active ? 'Verified account' : 'Pending verification'}</span>
-              <span>{providerMode ? 'Provider tools enabled' : 'Customer workspace'}</span>
-              <span>{adminMode ? 'Admin controls enabled' : 'Standard access'}</span>
+              <span>{user.is_active ? 'Verified' : 'Pending'}</span>
+              <span>{providerMode ? 'Provider tools' : 'Customer view'}</span>
+              <span>{adminMode ? 'Admin tools' : 'Standard access'}</span>
             </div>
           </div>
         </div>
@@ -379,15 +379,237 @@ export default function DashboardPage() {
       {feedback ? <div className={`feedback feedback--${feedback.tone}`}>{feedback.message}</div> : null}
 
       <div className="stat-grid">
-        <StatCard accent="sun" detail="Marketplace services" label="Services" value={workspace.services.length} />
-        <StatCard accent="sea" detail="Your bookings" label="My bookings" value={workspace.bookings.length} />
-        <StatCard accent="leaf" detail="Unread alerts" label="Notifications" value={workspace.unreadCount} />
-        <StatCard accent="violet" detail={adminMode ? 'Released revenue' : 'Reviews you wrote'} label={adminMode ? 'Revenue' : 'My reviews'} value={adminMode ? formatCurrency(workspace.adminDashboard?.released_revenue || 0) : myReviews.length} />
+        {adminMode ? (
+          <>
+            <StatCard accent="sun" detail="Registered accounts" label="Total Users" value={workspace.adminDashboard?.total_users || 0} />
+            <StatCard accent="sea" detail="Active profiles" label="Providers" value={workspace.adminDashboard?.total_providers || 0} />
+            <StatCard accent="leaf" detail="Total live services" label="Services" value={workspace.adminDashboard?.total_services || 0} />
+            <StatCard accent="violet" detail="Platform bookings" label="Bookings" value={workspace.adminDashboard?.total_bookings || 0} />
+            <StatCard accent="rose" detail="Awaiting resolution" label="Open Disputes" value={workspace.adminDashboard?.open_disputes || 0} />
+            <StatCard accent="amber" detail="Awaiting release" label="Pending Payments" value={workspace.adminDashboard?.pending_payments || 0} />
+            <StatCard accent="green" detail="Total released" label="Revenue" value={formatCurrency(workspace.adminDashboard?.released_revenue || 0)} />
+            <StatCard accent="sea" detail="Admin alerts" label="Alerts" value={workspace.unreadCount} />
+          </>
+        ) : (
+          <>
+            <StatCard accent="sun" detail="Services available" label="Services" value={workspace.services.length} />
+            <StatCard accent="sea" detail="My bookings" label="Bookings" value={workspace.bookings.length} />
+            <StatCard accent="leaf" detail="System alerts" label="Alerts" value={workspace.unreadCount} />
+            <StatCard accent="violet" detail="My feedback" label="Reviews" value={myReviews.length} />
+          </>
+        )}
       </div>
 
-      <div className="workspace-grid">
-        <section className="panel panel--span-2">
-          <SectionTitle eyebrow="Marketplace" title="Available services" description="Pick a service and start a booking." />
+      {providerMode ? (
+        <div className="workspace-grid">
+          <section className="panel">
+            <SectionTitle eyebrow="Provider studio" title="Provider profile" description="Shape how customers see your business." />
+            <form
+              className="form-stack"
+              onSubmit={async (event) => {
+                event.preventDefault()
+                await runAction(
+                  'Saving provider profile',
+                  () =>
+                    authorizedRequest((token) =>
+                      workspace.providerProfile
+                        ? api.updateProvider(workspace.providerProfile.user_id, providerForm, token)
+                        : api.createProvider(providerForm, token),
+                    ),
+                  {
+                    successMessage: workspace.providerProfile
+                      ? 'Provider profile updated.'
+                      : 'Provider profile created.',
+                  },
+                )
+              }}
+            >
+              <label className="field">
+                <span>Business name</span>
+                <input onChange={(event) => setProviderForm((current) => ({ ...current, business_name: event.target.value }))} required type="text" value={providerForm.business_name} />
+              </label>
+              <label className="field">
+                <span>Bio</span>
+                <textarea onChange={(event) => setProviderForm((current) => ({ ...current, bio: event.target.value }))} rows="4" value={providerForm.bio} />
+              </label>
+              <button className="button button--block" disabled={Boolean(busy)} type="submit">
+                {busy === 'Saving provider profile' ? 'Saving...' : 'Save profile'}
+              </button>
+            </form>
+          </section>
+
+          <section className="panel">
+            <SectionTitle eyebrow="Provider studio" title="Publish service" description="Creates a new service on the marketplace." />
+            <form
+              className="form-stack"
+              onSubmit={async (event) => {
+                event.preventDefault()
+                await runAction(
+                  'Publishing service',
+                  () =>
+                    authorizedRequest((token) =>
+                      api.createService(
+                        {
+                          description: serviceForm.description,
+                          name: serviceForm.name,
+                          price: Number(serviceForm.price),
+                        },
+                        token,
+                      ),
+                    ),
+                  { successMessage: 'Service published.' },
+                )
+                setServiceForm({ description: '', name: '', price: '' })
+              }}
+            >
+              <label className="field">
+                <span>Name</span>
+                <input onChange={(event) => setServiceForm((current) => ({ ...current, name: event.target.value }))} required type="text" value={serviceForm.name} />
+              </label>
+              <label className="field">
+                <span>Description</span>
+                <textarea onChange={(event) => setServiceForm((current) => ({ ...current, description: event.target.value }))} rows="4" value={serviceForm.description} />
+              </label>
+              <label className="field">
+                <span>Price</span>
+                <input onChange={(event) => setServiceForm((current) => ({ ...current, price: event.target.value }))} required step="0.01" type="number" value={serviceForm.price} />
+              </label>
+              <button className="button button--block" disabled={Boolean(busy)} type="submit">
+                {busy === 'Publishing service' ? 'Publishing...' : 'Publish service'}
+              </button>
+            </form>
+          </section>
+
+          <section className="panel panel--span-3">
+            <SectionTitle eyebrow="Provider studio" title="Provider bookings" description="Complete or cancel work tied to your services." />
+            <div className="stack-list">
+              {workspace.providerBookings.length ? (
+                workspace.providerBookings.map((booking) => (
+                  <article className="list-card" key={booking.uid}>
+                    <div className="list-card__main">
+                      <div className="list-card__title-row">
+                        <h3>{serviceLookup[booking.service_id]?.name || booking.uid}</h3>
+                        <StatusPill status={booking.status} />
+                      </div>
+                      <p>{formatDateTime(booking.booking_date)}</p>
+                      <small>{booking.customer_id}</small>
+                    </div>
+                    <div className="list-card__actions">
+                      {booking.status !== 'completed' ? (
+                        <button className="button button--ghost button--small" onClick={() => runAction('Updating booking', () => authorizedRequest((token) => api.updateBookingStatus(booking.uid, 'completed', token)), { successMessage: 'Booking marked completed.' })} type="button">Complete</button>
+                      ) : null}
+                      {booking.status !== 'cancelled' ? (
+                        <button className="button button--danger button--small" onClick={() => runAction('Updating booking', () => authorizedRequest((token) => api.updateBookingStatus(booking.uid, 'cancelled', token)), { successMessage: 'Booking cancelled.' })} type="button">Cancel</button>
+                      ) : null}
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state"><p>No provider bookings yet.</p></div>
+              )}
+            </div>
+          </section>
+
+          <section className="panel panel--span-3">
+            <SectionTitle
+              eyebrow="Provider studio"
+              title="My published services"
+              description={editingService ? `Editing: ${editingService.name}` : 'Edit or remove services you have published.'}
+              action={
+                editingService ? (
+                  <button className="button button--ghost" onClick={() => setEditingService(null)} type="button">
+                    Cancel edit
+                  </button>
+                ) : null
+              }
+            />
+            {editingService ? (
+              <form className="form-stack" onSubmit={handleUpdateService}>
+                <label className="field">
+                  <span>Name</span>
+                  <input
+                    onChange={(event) => setEditServiceForm((current) => ({ ...current, name: event.target.value }))}
+                    required
+                    type="text"
+                    value={editServiceForm.name}
+                  />
+                </label>
+                <label className="field">
+                  <span>Description</span>
+                  <textarea
+                    onChange={(event) => setEditServiceForm((current) => ({ ...current, description: event.target.value }))}
+                    rows="3"
+                    value={editServiceForm.description}
+                  />
+                </label>
+                <label className="field">
+                  <span>Price (UGX)</span>
+                  <input
+                    onChange={(event) => setEditServiceForm((current) => ({ ...current, price: event.target.value }))}
+                    required
+                    step="0.01"
+                    type="number"
+                    value={editServiceForm.price}
+                  />
+                </label>
+                <div className="service-edit-actions">
+                  <button className="button" disabled={Boolean(busy)} type="submit">
+                    {busy === 'Updating service' ? 'Saving...' : 'Save changes'}
+                  </button>
+                  <button
+                    className="button button--danger"
+                    disabled={Boolean(busy)}
+                    onClick={() => handleDeleteService(editingService.uid)}
+                    type="button"
+                  >
+                    {busy === 'Deleting service' ? 'Deleting...' : 'Delete service'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="card-grid">
+                {workspace.providerServices.length ? (
+                  workspace.providerServices.map((service) => (
+                    <article className="service-card" key={service.uid}>
+                      <div className="service-card__top">
+                        <StatusPill status="accepted" />
+                        <span className="service-card__price">{formatCurrency(service.price)}</span>
+                      </div>
+                      <h3>{service.name}</h3>
+                      <p>{service.description || 'No description provided.'}</p>
+                      <button
+                        className="button button--ghost button--small"
+                        onClick={() => {
+                          setEditingService(service)
+                          setEditServiceForm({
+                            description: service.description || '',
+                            name: service.name,
+                            price: String(service.price),
+                          })
+                        }}
+                        style={{ marginTop: '0.75rem' }}
+                        type="button"
+                      >
+                        Edit service
+                      </button>
+                    </article>
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <p>No services published yet. Use the form above to publish your first service.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {!adminMode && (
+        <>
+          <div className="workspace-grid">
+            <section className="panel panel--span-2">
+          <SectionTitle eyebrow="Marketplace" title="Services" description="Select a service to book." />
           <label className="field" style={{ marginBottom: '0.5rem' }}>
             <input
               onChange={(event) => setServiceSearch(event.target.value)}
@@ -411,7 +633,7 @@ export default function DashboardPage() {
               ))
             ) : (
               <div className="empty-state">
-                <p>{serviceSearch ? `No services match "${serviceSearch}".` : 'No services have been published yet.'}</p>
+                <p>{serviceSearch ? `No match for "${serviceSearch}".` : 'No services yet.'}</p>
               </div>
             )}
           </div>
@@ -635,213 +857,11 @@ export default function DashboardPage() {
               <div className="empty-state empty-state--compact"><p>No reviews yet.</p></div>
             )}
           </div>
-        </aside>
-      </div>
-
-      {providerMode ? (
-        <div className="workspace-grid">
-          <section className="panel">
-            <SectionTitle eyebrow="Provider studio" title="Provider profile" description="Shape how customers see your business." />
-            <form
-              className="form-stack"
-              onSubmit={async (event) => {
-                event.preventDefault()
-                await runAction(
-                  'Saving provider profile',
-                  () =>
-                    authorizedRequest((token) =>
-                      workspace.providerProfile
-                        ? api.updateProvider(workspace.providerProfile.user_id, providerForm, token)
-                        : api.createProvider(providerForm, token),
-                    ),
-                  {
-                    successMessage: workspace.providerProfile
-                      ? 'Provider profile updated.'
-                      : 'Provider profile created.',
-                  },
-                )
-              }}
-            >
-              <label className="field">
-                <span>Business name</span>
-                <input onChange={(event) => setProviderForm((current) => ({ ...current, business_name: event.target.value }))} required type="text" value={providerForm.business_name} />
-              </label>
-              <label className="field">
-                <span>Bio</span>
-                <textarea onChange={(event) => setProviderForm((current) => ({ ...current, bio: event.target.value }))} rows="4" value={providerForm.bio} />
-              </label>
-              <button className="button button--block" disabled={Boolean(busy)} type="submit">
-                {busy === 'Saving provider profile' ? 'Saving...' : 'Save profile'}
-              </button>
-            </form>
-          </section>
-
-          <section className="panel">
-            <SectionTitle eyebrow="Provider studio" title="Publish service" description="Creates a new service on the marketplace." />
-            <form
-              className="form-stack"
-              onSubmit={async (event) => {
-                event.preventDefault()
-                await runAction(
-                  'Publishing service',
-                  () =>
-                    authorizedRequest((token) =>
-                      api.createService(
-                        {
-                          description: serviceForm.description,
-                          name: serviceForm.name,
-                          price: Number(serviceForm.price),
-                        },
-                        token,
-                      ),
-                    ),
-                  { successMessage: 'Service published.' },
-                )
-                setServiceForm({ description: '', name: '', price: '' })
-              }}
-            >
-              <label className="field">
-                <span>Name</span>
-                <input onChange={(event) => setServiceForm((current) => ({ ...current, name: event.target.value }))} required type="text" value={serviceForm.name} />
-              </label>
-              <label className="field">
-                <span>Description</span>
-                <textarea onChange={(event) => setServiceForm((current) => ({ ...current, description: event.target.value }))} rows="4" value={serviceForm.description} />
-              </label>
-              <label className="field">
-                <span>Price</span>
-                <input onChange={(event) => setServiceForm((current) => ({ ...current, price: event.target.value }))} required step="0.01" type="number" value={serviceForm.price} />
-              </label>
-              <button className="button button--block" disabled={Boolean(busy)} type="submit">
-                {busy === 'Publishing service' ? 'Publishing...' : 'Publish service'}
-              </button>
-            </form>
-          </section>
-
-          <section className="panel panel--span-3">
-            <SectionTitle eyebrow="Provider studio" title="Provider bookings" description="Complete or cancel work tied to your services." />
-            <div className="stack-list">
-              {workspace.providerBookings.length ? (
-                workspace.providerBookings.map((booking) => (
-                  <article className="list-card" key={booking.uid}>
-                    <div className="list-card__main">
-                      <div className="list-card__title-row">
-                        <h3>{serviceLookup[booking.service_id]?.name || booking.uid}</h3>
-                        <StatusPill status={booking.status} />
-                      </div>
-                      <p>{formatDateTime(booking.booking_date)}</p>
-                      <small>{booking.customer_id}</small>
-                    </div>
-                    <div className="list-card__actions">
-                      {booking.status !== 'completed' ? (
-                        <button className="button button--ghost button--small" onClick={() => runAction('Updating booking', () => authorizedRequest((token) => api.updateBookingStatus(booking.uid, 'completed', token)), { successMessage: 'Booking marked completed.' })} type="button">Complete</button>
-                      ) : null}
-                      {booking.status !== 'cancelled' ? (
-                        <button className="button button--danger button--small" onClick={() => runAction('Updating booking', () => authorizedRequest((token) => api.updateBookingStatus(booking.uid, 'cancelled', token)), { successMessage: 'Booking cancelled.' })} type="button">Cancel</button>
-                      ) : null}
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <div className="empty-state"><p>No provider bookings yet.</p></div>
-              )}
-            </div>
-          </section>
-
-          <section className="panel panel--span-3">
-            <SectionTitle
-              eyebrow="Provider studio"
-              title="My published services"
-              description={editingService ? `Editing: ${editingService.name}` : 'Edit or remove services you have published.'}
-              action={
-                editingService ? (
-                  <button className="button button--ghost" onClick={() => setEditingService(null)} type="button">
-                    Cancel edit
-                  </button>
-                ) : null
-              }
-            />
-            {editingService ? (
-              <form className="form-stack" onSubmit={handleUpdateService}>
-                <label className="field">
-                  <span>Name</span>
-                  <input
-                    onChange={(event) => setEditServiceForm((current) => ({ ...current, name: event.target.value }))}
-                    required
-                    type="text"
-                    value={editServiceForm.name}
-                  />
-                </label>
-                <label className="field">
-                  <span>Description</span>
-                  <textarea
-                    onChange={(event) => setEditServiceForm((current) => ({ ...current, description: event.target.value }))}
-                    rows="3"
-                    value={editServiceForm.description}
-                  />
-                </label>
-                <label className="field">
-                  <span>Price (UGX)</span>
-                  <input
-                    onChange={(event) => setEditServiceForm((current) => ({ ...current, price: event.target.value }))}
-                    required
-                    step="0.01"
-                    type="number"
-                    value={editServiceForm.price}
-                  />
-                </label>
-                <div className="service-edit-actions">
-                  <button className="button" disabled={Boolean(busy)} type="submit">
-                    {busy === 'Updating service' ? 'Saving...' : 'Save changes'}
-                  </button>
-                  <button
-                    className="button button--danger"
-                    disabled={Boolean(busy)}
-                    onClick={() => handleDeleteService(editingService.uid)}
-                    type="button"
-                  >
-                    {busy === 'Deleting service' ? 'Deleting...' : 'Delete service'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="card-grid">
-                {workspace.providerServices.length ? (
-                  workspace.providerServices.map((service) => (
-                    <article className="service-card" key={service.uid}>
-                      <div className="service-card__top">
-                        <StatusPill status="accepted" />
-                        <span className="service-card__price">{formatCurrency(service.price)}</span>
-                      </div>
-                      <h3>{service.name}</h3>
-                      <p>{service.description || 'No description provided.'}</p>
-                      <button
-                        className="button button--ghost button--small"
-                        onClick={() => {
-                          setEditingService(service)
-                          setEditServiceForm({
-                            description: service.description || '',
-                            name: service.name,
-                            price: String(service.price),
-                          })
-                        }}
-                        style={{ marginTop: '0.75rem' }}
-                        type="button"
-                      >
-                        Edit service
-                      </button>
-                    </article>
-                  ))
-                ) : (
-                  <div className="empty-state">
-                    <p>No services published yet. Use the form above to publish your first service.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
+          </aside>
         </div>
-      ) : null}
+        </>
+      )}
+
 
       {adminMode ? (
         <div className="page-stack">

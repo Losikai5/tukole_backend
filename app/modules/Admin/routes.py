@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import RoleChecker
-from app.core.models import UserRole  # ← fixed import
+from app.core.dependencies import RoleChecker, get_current_user
+from app.core.models import UserRole, User  # ← fixed import
 
 from .schemes import (
     AdminActionResponse,
@@ -75,12 +75,14 @@ async def resolve_dispute(
     dispute_id: UUID,
     payload: AdminDisputeResolve,
     session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return await admin_service.resolve_dispute(
         dispute_id,
         payload.status,
         payload.admin_response,
         payload.resolution,  # ← new field passed through
+        current_user,
         session,
     )
 

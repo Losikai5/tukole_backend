@@ -75,7 +75,10 @@ async def login(user_data: SignInScheme, session: AsyncSession = Depends(get_db)
             "uid": str(user.uid),
             "username": user.username,
             "email": user.email,
-            "role": user.role
+            "role": user.role,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_active": user.is_active,
         }
     }
 
@@ -196,5 +199,15 @@ async def logout(token_data: dict = Depends(AccessToken())):
 
 
 @auth_router.get("/me")
-async def get_current_user_info(current_user: dict = Depends(get_current_user)):
-    return {"user": current_user }
+async def get_current_user_info(current_user = Depends(get_current_user)):
+    return {
+        "user": {
+            "uid": str(current_user.uid),
+            "username": current_user.username,
+            "email": current_user.email,
+            "role": current_user.role,
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "is_active": current_user.is_active,
+        }
+    }

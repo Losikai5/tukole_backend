@@ -33,9 +33,12 @@ async def get_all_disputes(
 async def get_dispute(
     dispute_id: UUID,
     session: AsyncSession = Depends(get_db),
-    _=Depends(RoleChecker([UserRole.ADMIN]))
+    current_user=Depends(get_current_user)
 ):
-    dispute = await dispute_service.get_dispute_by_id(dispute_id, session)
+    try:
+        dispute = await dispute_service.get_dispute_by_id(dispute_id, current_user, session)
+    except HTTPException:
+        raise
     if not dispute:
         raise HTTPException(status_code=404, detail="Dispute not found")
     return dispute
@@ -79,10 +82,11 @@ async def update_dispute(
     dispute_id: UUID,
     data: DisputeAdminUpdate,
     session: AsyncSession = Depends(get_db),
-    _=Depends(RoleChecker([UserRole.ADMIN]))
+    _=Depends(RoleChecker([UserRole.ADMIN])),
+    current_user=Depends(get_current_user)
 ):
     try:
-        dispute = await dispute_service.update_dispute(dispute_id, data, session)
+        dispute = await dispute_service.update_dispute(dispute_id, data, session, current_user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -114,3 +118,11 @@ async def update_dispute(
             send_dispute_resolved_email.delay(raiser.email, dispute.admin_response or "", won)
 
     return dispute
+
+
+@dispute_router.get("/my-disputes", response_model=list[DisputeResponse])
+async def my_disputes(
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return await dispute_service.get_user_disputes(current_user, session)

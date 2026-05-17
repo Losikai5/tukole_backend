@@ -40,6 +40,12 @@ class ServiceService:
         if not provider:
             raise ValueError("Provider profile not found. Create a provider profile first")
 
+        # prevent duplicate service names — return a friendly 400 via router
+        existing_stmt = select(Service).where(Service.name == service_data.name)
+        existing = (await session.exec(existing_stmt)).first()
+        if existing:
+            raise ValueError("A service with this name already exists")
+
         new_service = Service(**service_data.model_dump(), provider_id=provider.uid)
         session.add(new_service)
         await session.commit()

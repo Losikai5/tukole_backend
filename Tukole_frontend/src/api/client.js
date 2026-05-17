@@ -161,8 +161,15 @@ export const api = {
     return request('/payments/', { method: 'POST', token, body: payload })
   },
 
-  getPayment(paymentId, token) {
-    return request(`/payments/${paymentId}`, { token })
+  // Note: the backend route uses booking_id as the lookup key, not payment uid
+  getPayment(bookingId, token) {
+    return request(`/payments/${bookingId}`, { token })
+  },
+
+  // ── Disputes ────────────────────────────────────────────────────────────────
+
+  createDispute(payload, token) {
+    return request('/disputes/', { method: 'POST', token, body: payload })
   },
 
   // ── Reviews ─────────────────────────────────────────────────────────────────
@@ -197,12 +204,6 @@ export const api = {
       method: 'PATCH',
       token,
     })
-  },
-
-  // ── Analytics ───────────────────────────────────────────────────────────────
-
-  getAnalyticsDashboard(token) {
-    return request('/admin/dashboard', { token })
   },
 
   // ── Admin ────────────────────────────────────────────────────────────────────

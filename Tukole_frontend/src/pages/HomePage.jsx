@@ -53,44 +53,103 @@ export default function HomePage() {
       ).toFixed(1)
     : '0.0'
 
+  const categories = [
+    { count: '48 providers', href: '#featured-services', icon: '🪠', name: 'Plumbing' },
+    { count: '35 providers', href: '#featured-services', icon: '💡', name: 'Electrical' },
+    { count: '62 providers', href: '#featured-services', icon: '🧹', name: 'Cleaning' },
+    { count: '24 providers', href: '#featured-services', icon: '🎨', name: 'Painting' },
+    { count: '18 providers', href: '#featured-services', icon: '🚚', name: 'Moving' },
+    { count: '31 providers', href: '#featured-services', icon: '🏠', name: 'Renovation' },
+  ]
+
+  const features = [
+    {
+      description: 'Every provider is reviewed before they appear in the marketplace.',
+      icon: '✓',
+      title: 'Verified providers',
+    },
+    {
+      description: 'Payments are handled through the backend flow you already use.',
+      icon: '₿',
+      title: 'Escrow payments',
+    },
+    {
+      description: 'Customers can compare feedback before choosing a provider.',
+      icon: '★',
+      title: 'Reviews and ratings',
+    },
+    {
+      description: 'The layout stays fast and readable on smaller phones.',
+      icon: '⌁',
+      title: 'Mobile-first',
+    },
+  ]
+
+  const steps = [
+    {
+      description: 'Browse verified providers by category and location.',
+      index: '01',
+      title: 'Search',
+    },
+    {
+      description: 'Compare profiles, prices, and reviews.',
+      index: '02',
+      title: 'Choose',
+    },
+    {
+      description: 'Book a service and pay securely.',
+      index: '03',
+      title: 'Book',
+    },
+    {
+      description: 'Confirm the work and complete payment.',
+      index: '04',
+      title: 'Confirm',
+    },
+  ]
+
   return (
-    <div className="page-stack">
-      <section className="hero-panel">
+    <div className="page-stack page-stack--landing">
+      <section className="hero-panel hero-panel--marketplace">
         <div className="hero-panel__copy">
-          <p className="eyebrow">Tukole marketplace</p>
-          <h1>Beautiful service booking for users, providers, and admins.</h1>
+          <p className="eyebrow">🇺🇬 Made for Uganda</p>
+          <h1>Find trusted service providers near you</h1>
           <p className="hero-panel__text">
-            Tukole brings together discovery, booking, payments, reviews, disputes, and
-            operations in one warm, modern frontend built for your FastAPI backend.
+            Tukole connects you with verified plumbers, electricians, cleaners, and more - with
+            secure mobile money payments.
           </p>
 
           <div className="hero-panel__actions">
-            <Link className="button" to={isAuthenticated ? '/workspace' : '/auth'}>
-              {isAuthenticated ? 'Open workspace' : 'Start with Tukole'}
-            </Link>
-            <a className="button button--ghost" href="#featured-services">
-              Explore services
+            <a className="button" href="#popular-categories">
+              Browse Services
             </a>
+            <Link className="button button--ghost" to="/auth?mode=register&role=provider">
+              Become a Provider
+            </Link>
           </div>
+
+          <p className="hero-panel__note">
+            <strong>&quot;Tukole&quot;</strong> means <em>&quot;Let us work&quot;</em> in Luganda.
+          </p>
         </div>
 
         <div className="hero-panel__spotlight">
-          <div className="spotlight-card">
-            <p className="spotlight-card__eyebrow">Why this frontend works</p>
-            <h2>One interface for the whole marketplace journey.</h2>
-            <div className="spotlight-list">
-              <article>
-                <strong>Customers</strong>
-                <p>Browse services, book quickly, pay the right amount, and stay updated.</p>
-              </article>
-              <article>
-                <strong>Providers</strong>
-                <p>Create a profile, publish services, and manage every booking status.</p>
-              </article>
-              <article>
-                <strong>Admins</strong>
-                <p>See platform metrics, resolve disputes, and keep the marketplace healthy.</p>
-              </article>
+          <div className="hero-scene">
+            <div className="hero-scene__image" aria-hidden="true">
+              <div className="hero-scene__glow hero-scene__glow--one" />
+              <div className="hero-scene__glow hero-scene__glow--two" />
+              <div className="hero-scene__card hero-scene__card--top">
+                <span>Verified providers</span>
+                <strong>{loading ? '...' : providers.length}</strong>
+              </div>
+              <div className="hero-scene__card hero-scene__card--middle">
+                <span>Live services</span>
+                <strong>{loading ? '...' : services.length}</strong>
+              </div>
+              <div className="hero-scene__card hero-scene__card--bottom">
+                <span>Community reviews</span>
+                <strong>{loading ? '...' : reviews.length}</strong>
+              </div>
             </div>
           </div>
         </div>
@@ -99,25 +158,25 @@ export default function HomePage() {
       <div className="stat-grid">
         <StatCard
           accent="sun"
-          detail="Public offerings connected to your backend"
+          detail="Live offerings from the backend"
           label="Live services"
           value={loading ? '...' : services.length}
         />
         <StatCard
           accent="sea"
-          detail="Provider profiles ready for bookings"
+          detail="Provider profiles ready to book"
           label="Providers"
           value={loading ? '...' : providers.length}
         />
         <StatCard
           accent="leaf"
-          detail="Average provider rating from the current data"
+          detail="Average provider rating"
           label="Trust score"
           value={loading ? '...' : providerAverage}
         />
         <StatCard
           accent="violet"
-          detail="Community feedback already visible to visitors"
+          detail="Visible community feedback"
           label="Reviews"
           value={loading ? '...' : reviews.length}
         />
@@ -127,34 +186,51 @@ export default function HomePage() {
 
       <section className="panel panel--story">
         <SectionTitle
-          eyebrow="Built to convert"
-          title="A calmer, more premium first impression"
-          description="This frontend leans into warm typography, layered color, and focused workflows so Tukole feels like a product, not just a collection of forms."
+          eyebrow="Why Tukole?"
+          title="A simpler way to find trusted help"
+          description="No more WhatsApp groups and word of mouth. Tukole brings trust, security, and convenience to the marketplace."
         />
-        <div className="story-grid">
-          <article className="story-card">
-            <h3>Clear discovery</h3>
-            <p>Visitors immediately understand what Tukole offers and where to go next.</p>
-          </article>
-          <article className="story-card">
-            <h3>Role-aware workspace</h3>
-            <p>The dashboard adapts to users, providers, and admins without feeling cluttered.</p>
-          </article>
-          <article className="story-card">
-            <h3>API-first integration</h3>
-            <p>Every important surface is connected to your existing routes instead of mock-only UI.</p>
-          </article>
+        <div className="feature-grid">
+          {features.map((feature) => (
+            <article className="feature-card" key={feature.title}>
+              <span className="feature-card__icon" aria-hidden="true">
+                {feature.icon}
+              </span>
+              <h3>{feature.title}</h3>
+              <p>{feature.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel" id="popular-categories">
+        <SectionTitle
+          eyebrow="Popular categories"
+          title="Find skilled professionals"
+          description="Browse the most common service types in Kampala and beyond."
+        />
+
+        <div className="category-grid">
+          {categories.map((category) => (
+            <a className="category-card" href={category.href} key={category.name}>
+              <span className="category-card__icon" aria-hidden="true">
+                {category.icon}
+              </span>
+              <strong>{category.name}</strong>
+              <span>{category.count}</span>
+            </a>
+          ))}
         </div>
       </section>
 
       <section className="panel" id="featured-services">
         <SectionTitle
           eyebrow="Featured services"
-          title="What people can book right now"
-          description="This section reads live service records from your `/services` endpoint."
+          title="What people can book now"
+          description="Live service records from your backend appear here."
           action={
             <Link className="button button--ghost" to={isAuthenticated ? '/workspace' : '/auth'}>
-              Book from workspace
+              Get started
             </Link>
           }
         />
@@ -174,7 +250,7 @@ export default function HomePage() {
           ) : (
             <div className="empty-state">
               <h3>No services yet</h3>
-              <p>As soon as your backend has services, they will appear here automatically.</p>
+              <p>Services will appear here once the backend has them.</p>
             </div>
           )}
         </div>
@@ -182,9 +258,43 @@ export default function HomePage() {
 
       <section className="panel">
         <SectionTitle
+          eyebrow="How it works"
+          title="Getting quality service is simple"
+          description="The flow is short, clear, and built for mobile users."
+        />
+
+        <div className="steps-grid steps-grid--wide">
+          {steps.map((step) => (
+            <article className="step-card" key={step.index}>
+              <span>{step.index}</span>
+              <h3>{step.title}</h3>
+              <p>{step.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel cta-band">
+        <div>
+          <p className="eyebrow">Ready to Tukole?</p>
+          <h2>Join Uganda&apos;s service marketplace.</h2>
+          <p>Whether you need help or want to offer it, Tukole keeps the next step simple.</p>
+        </div>
+        <div className="cta-band__actions">
+          <Link className="button" to={isAuthenticated ? '/workspace' : '/auth'}>
+            Get Started
+          </Link>
+          <Link className="button button--ghost" to="/auth?mode=register&role=provider">
+            List Your Services
+          </Link>
+        </div>
+      </section>
+
+      <section className="panel">
+        <SectionTitle
           eyebrow="Provider roster"
           title="People powering the marketplace"
-          description="Live provider records from the Tukole API help the landing page feel active and trustworthy."
+          description="Live provider records keep the page active."
         />
 
         <div className="provider-grid">
@@ -202,35 +312,9 @@ export default function HomePage() {
           ) : (
             <div className="empty-state">
               <h3>No providers yet</h3>
-              <p>Create a provider profile from the workspace to bring this section to life.</p>
+              <p>Create a provider profile in the workspace.</p>
             </div>
           )}
-        </div>
-      </section>
-
-      <section className="panel">
-        <SectionTitle
-          eyebrow="Flow"
-          title="How Tukole moves work from discovery to delivery"
-          description="The frontend is structured around the same marketplace lifecycle your backend already supports."
-        />
-
-        <div className="steps-grid">
-          <article className="step-card">
-            <span>01</span>
-            <h3>Discover and book</h3>
-            <p>Customers browse services and submit bookings with a clean scheduling form.</p>
-          </article>
-          <article className="step-card">
-            <span>02</span>
-            <h3>Manage and fulfill</h3>
-            <p>Providers update their profile, publish offers, and close out bookings from one studio.</p>
-          </article>
-          <article className="step-card">
-            <span>03</span>
-            <h3>Operate with confidence</h3>
-            <p>Admins can watch the marketplace, handle disputes, and inspect deleted records when needed.</p>
-          </article>
         </div>
       </section>
     </div>
